@@ -7,21 +7,21 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, status
+from fastapi import FastAPI, File, UploadFile, Form, Query, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import (
     CORS_ORIGINS,
+    CORS_ORIGIN_REGEX,
     MAX_FILE_SIZE_BYTES,
     ALLOWED_EXTENSIONS,
     FRAMES_PER_VIDEO,
-    IMAGE_SIZE,
-    MODEL_PATH,
-    CLASS_MAPPING_PATH,
-    CORS_ORIGIN_REGEX
+    MODEL_REGISTRY,
+    DEFAULT_MODEL_ID,
+    normalize_model_id
 )
-from app.preprocessing import extract_rgb_frames
+from app.preprocessing import preprocess_for_model
 from app.inference import engine
 
 logging.basicConfig(
@@ -33,17 +33,13 @@ logger = logging.getLogger("signbridge.api")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Load model once
-    logger.info("Initializing SignBridge MobileNetV2 backend...")
+    # Startup: Pre-load available models once
+    logger.info("Initializing SignBridge Multi-Model Backend...")
     try:
-        engine.load()
-        logger.info("MobileNetV2 engine successfully ready for live inference.")
+        load_statuses = engine.load_all()
+        logger.info(f"Model initialization statuses: {load_statuses}")
     except Exception as e:
-        logger.error(f"Could not load MobileNetV2 model at startup: {e}")
-        logger.warning(
-            "Backend starting in scaffold mode. Ensure mobilenetv2_frozen_best.keras and "
-            "class_mapping.json are present in backend/artifacts/mobilenetv2_frozen/."
-        )
+        logger.error(f"Error initializing models at startup: {e}")
     yield
     # Shutdown
     logger.info("SignBridge backend shutting down.")
@@ -51,8 +47,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="SignBridge ISL Recognition API",
-    description="Real-time and batch video recognition API for 76 Indian Sign Language word classes using MobileNetV2.",
-    version="1.0.0",
+    description=(
+        "Production inference API for 76 Indian Sign Language word classes. "
+        "Supports MobileNetV2 (Frozen Backbone, 67.78% Acc), Custom 2D CNN (5.00% Acc), "
+        "and CNN-LSTM Spatio-Temporal Model (4.44% Acc)."
+    ),
+    version="1.1.0",
     lifespan=lifespan
 )
 
@@ -71,8 +71,17 @@ app.add_middleware(
 async def root():
     return {
         "service": "SignBridge ISL Recognition Backend",
-        "version": "1.0.0",
-        "active_model": "MobileNetV2 (Frozen Backbone)",
+        "version": "1.1.0",
+        "default_model": DEFAULT_MODEL_ID,
+        "supported_models": [
+            {
+                "id": k,
+                "name": v["name"],
+                "test_accuracy": v["test_accuracy"],
+                "loaded": engine.is_model_loaded(k)
+            }
+            for k, v in MODEL_REGISTRY.items()
+        ],
         "docs_url": "/docs",
         "health_url": "/api/v1/health"
     }
@@ -80,58 +89,121 @@ async def root():
 
 @app.get("/api/v1/health")
 async def health_check():
+    loaded_map = {
+        key: engine.is_model_loaded(key)
+        for key in MODEL_REGISTRY
+    }
     return {
         "status": "healthy",
-        "model_loaded": engine.is_loaded,
+        # Backwards compatible flags
+        "model_loaded": engine.is_model_loaded(DEFAULT_MODEL_ID),
         "classes_count": engine.num_classes,
-        "model_path": str(MODEL_PATH),
-        "mapping_path": str(CLASS_MAPPING_PATH),
+        "default_model": DEFAULT_MODEL_ID,
+        "models": loaded_map,
         "timestamp": datetime.utcnow().isoformat() + "Z"
     }
 
 
 @app.get("/api/v1/model-info")
-async def model_info():
-    if not engine.is_loaded:
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={
-                "error": "Model weights are not loaded.",
-                "model_path": str(MODEL_PATH),
-                "mapping_path": str(CLASS_MAPPING_PATH)
-            }
-        )
+async def model_info(model: Optional[str] = Query(None)):
+    if model:
+        target_key = normalize_model_id(model)
+        if target_key not in MODEL_REGISTRY:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown model '{model}'. Supported options: {list(MODEL_REGISTRY.keys())}"
+            )
+        cfg = MODEL_REGISTRY[target_key]
+        is_ready = engine.is_model_loaded(target_key)
+        if not is_ready:
+            try:
+                engine.load_model(target_key)
+                is_ready = True
+            except Exception as e:
+                return JSONResponse(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    content={
+                        "error": f"Model '{cfg['name']}' is not available: {str(e)}",
+                        "model_id": target_key,
+                        "expected_path": str(cfg["model_file"])
+                    }
+                )
 
-    return {
-        "model_id": "mobilenetv2",
-        "name": "MobileNetV2 (Frozen Backbone)",
-        "architecture": "ImageNet Pretrained Feature Extractor + Global Avg Pooling + Dense(256) -> Dense(76)",
-        "offline_test_accuracy": 67.78,
-        "input_shape": list(engine.model.input_shape),
-        "output_shape": list(engine.model.output_shape),
-        "num_classes": engine.num_classes,
-        "preprocessing": {
-            "sampling_frames": FRAMES_PER_VIDEO,
-            "target_resolution": f"{IMAGE_SIZE}x{IMAGE_SIZE}",
-            "color_space": "RGB",
-            "pixel_rescaling": "1/127.5, offset -1.0 to [-1, 1]"
+        model_inst = engine.models[target_key]
+        return {
+            "model_id": target_key,
+            "name": cfg["name"],
+            "architecture": cfg["architecture"],
+            "tagline": cfg["tagline"],
+            "offline_test_accuracy": cfg["test_accuracy"],
+            "input_shape": list(model_inst.input_shape),
+            "output_shape": list(model_inst.output_shape),
+            "num_classes": engine.num_classes,
+            "preprocessing": {
+                "sampling_frames": cfg["frame_count"],
+                "target_resolution": f"{cfg['image_size']}x{cfg['image_size']}",
+                "color_space": cfg["color_space"],
+                "normalization": cfg["normalization"],
+                "input_scale": cfg["input_scale"],
+                "aggregation": cfg["aggregation"]
+            }
         }
+
+    # Return summary of all models
+    return {
+        "default_model": DEFAULT_MODEL_ID,
+        "num_classes": engine.num_classes,
+        "models": [
+            {
+                "id": k,
+                "name": v["name"],
+                "test_accuracy": v["test_accuracy"],
+                "architecture": v["architecture"],
+                "tagline": v["tagline"],
+                "loaded": engine.is_model_loaded(k),
+                "input_mode": v["input_mode"],
+                "resolution": f"{v['image_size']}x{v['image_size']}"
+            }
+            for k, v in MODEL_REGISTRY.items()
+        ]
     }
 
 
 @app.post("/api/v1/recognize")
-async def recognize_video(video: UploadFile = File(...)):
-    # 1. Check if model is ready
-    if not engine.is_loaded:
+async def recognize_video(
+    video: UploadFile = File(...),
+    model: Optional[str] = Form(None),
+    model_query: Optional[str] = Query(None, alias="model")
+):
+    # 1. Resolve requested model identifier (Form parameter takes precedence, then Query, then default)
+    requested_model = model or model_query or DEFAULT_MODEL_ID
+    target_key = normalize_model_id(requested_model)
+
+    if target_key not in MODEL_REGISTRY:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                "MobileNetV2 model is not loaded. Ensure mobilenetv2_frozen_best.keras "
-                "and class_mapping.json are placed in backend/artifacts/mobilenetv2_frozen/."
+                f"Unknown model '{requested_model}'. "
+                f"Supported models: {list(MODEL_REGISTRY.keys())}"
             )
         )
 
-    # 2. Validate filename and extension
+    # 2. Ensure target model is loaded
+    if not engine.is_model_loaded(target_key):
+        try:
+            engine.load_model(target_key)
+        except Exception as e:
+            cfg = MODEL_REGISTRY[target_key]
+            logger.error(f"Cannot load requested model '{target_key}': {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    f"Selected model '{cfg['name']}' is not available. "
+                    f"Ensure model weights exist at {cfg['model_file']}."
+                )
+            )
+
+    # 3. Validate filename and extension
     if not video.filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -145,7 +217,7 @@ async def recognize_video(video: UploadFile = File(...)):
             detail=f"Unsupported video format '{ext}'. Allowed formats: {sorted(list(ALLOWED_EXTENSIONS))}"
         )
 
-    # 3. Stream upload to a temporary file while verifying size limit
+    # 4. Stream upload to a temporary file while verifying size limit
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
     temp_path = Path(temp_file.name)
     total_bytes = 0
@@ -171,9 +243,13 @@ async def recognize_video(video: UploadFile = File(...)):
                 detail="Uploaded video file is empty."
             )
 
-        # 4. Extract 33 RGB frames
+        # 5. Model-specific frame extraction & preprocessing
         try:
-            frames = extract_rgb_frames(temp_path, num_frames=FRAMES_PER_VIDEO, image_size=IMAGE_SIZE)
+            input_tensor = preprocess_for_model(
+                temp_path,
+                model_id=target_key,
+                num_frames=FRAMES_PER_VIDEO
+            )
         except Exception as e:
             logger.warning(f"Failed to decode video frames from {video.filename}: {e}")
             raise HTTPException(
@@ -181,17 +257,18 @@ async def recognize_video(video: UploadFile = File(...)):
                 detail=f"Could not decode video file: {str(e)}"
             )
 
-        # 5. Execute MobileNetV2 neural inference
+        # 6. Execute neural inference on selected model
         try:
-            pred_result = engine.predict(frames, top_k=5)
+            pred_result = engine.predict(input_tensor, model_id=target_key, top_k=5)
         except Exception as e:
-            logger.error(f"Inference error on {video.filename}: {e}")
+            logger.error(f"Inference error on {video.filename} with model {target_key}: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Neural inference error: {str(e)}"
             )
 
-        # 6. Format response matching frontend TypeScript schema
+        # 7. Format response matching frontend TypeScript schema
+        meta = pred_result["model_metadata"]
         return {
             "success": True,
             "isMock": False,
@@ -199,18 +276,14 @@ async def recognize_video(video: UploadFile = File(...)):
             "predictedWord": pred_result["predicted_word"],
             "confidence": pred_result["confidence"],
             "modelUsed": {
-                "id": "mobilenetv2",
-                "name": "MobileNetV2 (Frozen Backbone)",
-                "testAccuracy": 67.78,
-                "architecture": "Pretrained ImageNet Visual Extractor + Global Avg Pooling"
+                "id": meta["id"],
+                "name": meta["name"],
+                "testAccuracy": meta["testAccuracy"],
+                "architecture": meta["architecture"],
+                "tagline": meta.get("tagline", "")
             },
             "topK": pred_result["top_k"],
-            "preprocessing": {
-                "framesSampled": FRAMES_PER_VIDEO,
-                "frameResolution": f"{IMAGE_SIZE} × {IMAGE_SIZE}",
-                "colorSpace": "RGB",
-                "normalization": "Normalized to [-1, 1]"
-            },
+            "preprocessing": meta["preprocessing"],
             "simulatedLatencyMs": pred_result["inference_time_ms"],
             "timestamp": datetime.now().strftime("%I:%M:%S %p")
         }
