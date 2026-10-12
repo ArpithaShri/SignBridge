@@ -1,16 +1,19 @@
 import type {
   VideoRecognitionRequest,
   VideoRecognitionResponse,
-  FileValidationResult
+  FileValidationResult,
+  RecognitionAnalysis,
+  ModelPrediction
 } from '../types';
 
 /**
  * Configuration for the future Python (FastAPI / Flask) inference service.
- * In Phase 2, mock simulation is the active pipeline until the Python backend is integrated.
+ * In Phase 2 and 3, mock simulation is the active pipeline until the Python backend is integrated.
  */
 export const API_CONFIG = {
   BASE_URL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
   ENDPOINT_RECOGNIZE: '/api/v1/recognize',
+  ENDPOINT_COMPARE: '/api/v1/compare',
   MAX_FILE_SIZE_BYTES: 100 * 1024 * 1024, // 100 MB
   ALLOWED_EXTENSIONS: ['.mov', '.mp4', '.avi'],
   DEFAULT_SAMPLE_FRAMES: 33,
@@ -128,9 +131,7 @@ const MOCK_PREDICTION_CANDIDATES = [
 ];
 
 /**
- * Primary recognition service method.
- * In Phase 2, returns simulated mock prediction data with realistic async processing delay.
- * In Phase 4, will connect to the live Python backend endpoint.
+ * Primary recognition service method (MobileNetV2 individual predictor).
  */
 export async function analyzeVideo(
   request: VideoRecognitionRequest,
@@ -141,12 +142,10 @@ export async function analyzeVideo(
     throw new Error(validation.errorMessage || 'Invalid video file provided');
   }
 
-  // Phase 2: Mock Mode Pipeline
+  // Mock Mode Pipeline
   if (simulateMock) {
-    // Simulate 33-frame extraction and neural forward pass latency (1.4s)
     await new Promise((resolve) => setTimeout(resolve, 1400));
 
-    // Choose candidate based on filename hash for consistent repeatability on the same video
     const hash = request.videoFile.name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     const candidate = MOCK_PREDICTION_CANDIDATES[hash % MOCK_PREDICTION_CANDIDATES.length];
 
@@ -174,7 +173,7 @@ export async function analyzeVideo(
     };
   }
 
-  // Phase 4: Real Backend Fetch Architecture (Prepared for FastAPI integration)
+  // Phase 4: Real Backend Fetch
   const formData = new FormData();
   formData.append('video', request.videoFile);
   formData.append('sampling_frames', String(request.samplingFrames || API_CONFIG.DEFAULT_SAMPLE_FRAMES));
@@ -197,4 +196,128 @@ export async function analyzeVideo(
     ...data,
     isMock: false
   };
+}
+
+/**
+ * Multi-model comparison service method.
+ * Runs or simulates parallel evaluation across Custom CNN, MobileNetV2, and CNN-LSTM.
+ */
+export async function compareAllModels(
+  request: VideoRecognitionRequest,
+  simulateMock: boolean = true
+): Promise<RecognitionAnalysis> {
+  const validation = validateVideoFile(request.videoFile);
+  if (!validation.isValid) {
+    throw new Error(validation.errorMessage || 'Invalid video file provided');
+  }
+
+  // Mock Mode Pipeline
+  if (simulateMock) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    const hash = request.videoFile.name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const candidate = MOCK_PREDICTION_CANDIDATES[hash % MOCK_PREDICTION_CANDIDATES.length];
+
+    const customAgrees = hash % 2 === 0;
+    const lstmAgrees = hash % 3 !== 0;
+
+    const customWord = customAgrees ? candidate.primary : (candidate.topK[1]?.word || 'HELLO');
+    const lstmWord = lstmAgrees ? candidate.primary : (candidate.topK[2]?.word || 'THANK YOU');
+
+    const mobilenetPred: ModelPrediction = {
+      modelId: 'mobilenetv2',
+      modelName: 'MobileNetV2 (Frozen Backbone)',
+      predictedWord: candidate.primary,
+      confidence: candidate.confidence,
+      inferenceTimeMs: 142,
+      isBestModelOverall: true,
+      status: 'success',
+      topK: candidate.topK
+    };
+
+    const customPred: ModelPrediction = {
+      modelId: 'custom-cnn',
+      modelName: 'Custom 2D CNN',
+      predictedWord: customWord,
+      confidence: customAgrees ? 0.384 : 0.295,
+      inferenceTimeMs: 98,
+      isBestModelOverall: false,
+      status: 'success',
+      topK: [
+        { word: customWord, confidence: customAgrees ? 0.384 : 0.295 },
+        { word: candidate.topK[1]?.word || 'WATER', confidence: 0.182 },
+        { word: candidate.topK[2]?.word || 'HELP', confidence: 0.141 }
+      ]
+    };
+
+    const lstmPred: ModelPrediction = {
+      modelId: 'cnn-lstm',
+      modelName: 'CNN-LSTM',
+      predictedWord: lstmWord,
+      confidence: lstmAgrees ? 0.342 : 0.264,
+      inferenceTimeMs: 215,
+      isBestModelOverall: false,
+      status: 'success',
+      topK: [
+        { word: lstmWord, confidence: lstmAgrees ? 0.342 : 0.264 },
+        { word: candidate.primary, confidence: 0.218 },
+        { word: 'NAMASTE', confidence: 0.125 }
+      ]
+    };
+
+    // Calculate model agreement
+    const words = [mobilenetPred.predictedWord, customPred.predictedWord, lstmPred.predictedWord];
+    const wordCounts: Record<string, number> = {};
+    words.forEach((w) => {
+      wordCounts[w] = (wordCounts[w] || 0) + 1;
+    });
+
+    let maxCount = 0;
+    let majorityWord = mobilenetPred.predictedWord;
+    Object.entries(wordCounts).forEach(([w, count]) => {
+      if (count > maxCount) {
+        maxCount = count;
+        majorityWord = w;
+      }
+    });
+
+    return {
+      videoName: request.videoFile.name,
+      analyzedAt: new Date().toLocaleTimeString(),
+      isMockData: true,
+      primaryPrediction: {
+        modelId: 'mobilenetv2',
+        modelName: 'MobileNetV2 (Frozen Backbone)',
+        word: mobilenetPred.predictedWord,
+        confidence: mobilenetPred.confidence
+      },
+      models: {
+        mobilenetv2: mobilenetPred,
+        'custom-cnn': customPred,
+        'cnn-lstm': lstmPred
+      },
+      agreementStatus: {
+        allAgree: maxCount === 3,
+        majorityAgreedWord: majorityWord,
+        agreementCount: maxCount
+      }
+    };
+  }
+
+  // Phase 4: Live multi-model backend integration
+  const formData = new FormData();
+  formData.append('video', request.videoFile);
+  formData.append('sampling_frames', String(request.samplingFrames || API_CONFIG.DEFAULT_SAMPLE_FRAMES));
+
+  const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINT_COMPARE}`, {
+    method: 'POST',
+    body: formData
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Comparison server error: ${response.status}`);
+  }
+
+  return response.json();
 }

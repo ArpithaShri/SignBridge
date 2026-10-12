@@ -3,7 +3,7 @@ import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 import { Dashboard } from './components/dashboard/Dashboard';
 import { RecognitionPage } from './components/recognition/RecognitionPage';
-import { ComparisonPlaceholder } from './components/comparison/ComparisonPlaceholder';
+import { ComparisonPage } from './components/comparison/ComparisonPage';
 import type { NavigationTab } from './types';
 
 export function App() {
@@ -28,7 +28,7 @@ export function App() {
         )}
 
         {currentTab === 'comparison' && (
-          <ComparisonPlaceholder onBackToDashboard={() => setCurrentTab('dashboard')} />
+          <ComparisonPage />
         )}
       </main>
 

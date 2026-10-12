@@ -3,7 +3,7 @@ import type { ModelMetrics, ISLClassInfo, RecognitionAnalysis } from '../types';
 export const MODELS_DATA: ModelMetrics[] = [
   {
     id: 'mobilenetv2',
-    name: 'MobileNetV2',
+    name: 'MobileNetV2 (Frozen Backbone)',
     architectureType: 'Transfer Learning (Frozen Backbone)',
     testAccuracy: 67.78,
     macroF1: 66.42,
@@ -16,40 +16,40 @@ export const MODELS_DATA: ModelMetrics[] = [
       'Leverages an ImageNet-pretrained MobileNetV2 backbone as a frozen spatial feature extractor. Extracted frame features are aggregated via Global Average Pooling and classified with dense layers.',
     strengths: [
       'Highest test accuracy on the 76-class ISL dataset (67.78%)',
-      'Frozen backbone prevents overfitting on limited domain video data',
-      'Compact inverted residual architecture for efficient inference',
-      'Strong generalized visual representation from pretrained weights'
+      'Frozen pretrained backbone prevents severe overfitting on limited video data',
+      'Compact inverted residual architecture with efficient inference footprint',
+      'Robust generalized visual representation across sign handshapes and motion'
     ],
     keyParameters: {
-      backbone: 'Pretrained MobileNetV2 (Frozen)',
+      backbone: 'Pretrained MobileNetV2 (ImageNet weights, Frozen)',
       pooling: 'Global Average Pooling 2D',
-      classificationHead: 'Dense (128, ReLU) + Softmax (76)',
-      regularization: 'Dropout (0.3)'
+      classificationHead: 'Dense (128, ReLU) + Dropout (0.3) + Softmax (76)',
+      regularization: 'Dropout (0.3) + Frozen Backbone'
     }
   },
   {
     id: 'custom-cnn',
     name: 'Custom 2D CNN',
     architectureType: 'Scratch 2D CNN Baseline',
-    testAccuracy: 58.33,
-    macroF1: 56.15,
+    testAccuracy: 5.00,
+    macroF1: 4.82,
     inputShape: '(33, 224, 224, 3)',
     framesSampled: 33,
     frameResolution: '224 × 224 RGB',
     isBestPerformer: false,
-    tagline: 'Lightweight end-to-end convolutional neural network',
+    tagline: 'Scratch-trained 3-block convolutional neural network',
     description:
-      'A custom scratch-trained 3-block convolutional network (32, 64, 128 filters) with ReLU activations and 2×2 max pooling, followed by Global Average Pooling and a classification head.',
+      'A custom 3-block convolutional network (32, 64, 128 filters) trained entirely from scratch on raw sign frames. Demonstrates the difficulty of training deep spatial features without pretrained visual priors on 76 classes.',
     strengths: [
-      'Trained from scratch directly on ISL video frames',
-      'Small memory footprint and fast forward pass',
-      'Clean baseline architecture for spatial sign representation',
-      'No external pretrained weights dependency'
+      'Lightweight model footprint with low parameter count',
+      'Serves as baseline scratch benchmark for 2D spatial learning',
+      'Zero external dependency on pretrained weights',
+      'Fast per-frame forward pass latency'
     ],
     keyParameters: {
-      backbone: '3 Conv Blocks (32, 64, 128 filters, 3×3)',
+      backbone: '3 Conv Blocks (32, 64, 128 filters, 3×3 + ReLU)',
       pooling: 'Max Pooling (2×2) + Global Average Pooling',
-      classificationHead: 'Dense (128, ReLU) + Softmax (76)',
+      classificationHead: 'Dense (128, ReLU) + Dropout (0.3) + Softmax (76)',
       regularization: 'Dropout (0.3)'
     }
   },
@@ -57,20 +57,20 @@ export const MODELS_DATA: ModelMetrics[] = [
     id: 'cnn-lstm',
     name: 'CNN-LSTM',
     architectureType: 'Spatio-Temporal Sequential Model',
-    testAccuracy: 61.11,
-    macroF1: 59.80,
+    testAccuracy: 4.44,
+    macroF1: 4.15,
     inputShape: '(33, 224, 224, 3)',
     framesSampled: 33,
     frameResolution: '224 × 224 RGB',
     isBestPerformer: false,
     tagline: 'Frame feature extraction paired with temporal recurrence',
     description:
-      'Extracts spatial visual feature representations from each of the 33 frames via CNN layers, feeding the ordered sequence into an LSTM network to explicitly capture sign movement trajectories over time.',
+      'Extracts spatial features from each of the 33 frames via CNN layers, feeding the ordered sequence into an LSTM network. Without pretrained feature extractors, joint spatial and temporal optimization from scratch faces severe sample-efficiency bottlenecks on 76 classes.',
     strengths: [
-      'Explicitly captures dynamic sign language hand motions across time',
-      'Processes ordered 33-frame temporal sequence',
-      'Recurrent cell state retains gesture transitions',
-      'Captures speed and directional variation in ISL gestures'
+      'Explicitly processes ordered 33-frame temporal sequence',
+      'Designed to model gesture trajectories and sign velocity transitions',
+      'Provides empirical benchmark for recurrent temporal architectures',
+      'TimeDistributed spatial feature aggregation'
     ],
     keyParameters: {
       backbone: 'TimeDistributed CNN Feature Extractor',
@@ -82,10 +82,10 @@ export const MODELS_DATA: ModelMetrics[] = [
 ];
 
 export const LATE_FUSION_NOTE = {
-  title: 'Late Prediction Fusion Insight',
+  title: 'Late Prediction Fusion Benchmark',
   accuracy: 60.56,
   explanation:
-    'Equal-weight late fusion (averaging softmax probability distributions across Custom CNN, MobileNetV2, and CNN-LSTM) achieved 60.56% on test evaluation. Because MobileNetV2 alone achieves 67.78%, late fusion is not configured as the default predictor to prevent pulling down the top model’s performance.'
+    'Equal-weight late fusion (averaging softmax probability distributions across MobileNetV2, Custom CNN, and CNN-LSTM) achieved 60.56% on the test set. Because MobileNetV2 alone achieves 67.78%, equal-weight fusion is pulled down by the scratch models (5.00% and 4.44%) and is therefore not the default predictor.'
 };
 
 export const ISL_SAMPLE_CLASSES: ISLClassInfo[] = [
@@ -166,14 +166,14 @@ export const PIPELINE_STEPS = [
   {
     step: '04',
     title: 'Multi-Model Inference',
-    description: 'Feeds preprocessed frames simultaneously to Custom CNN, MobileNetV2, and CNN-LSTM architectures.',
+    description: 'Feeds preprocessed frames to Custom CNN, MobileNetV2, and CNN-LSTM architectures for comparative analysis.',
     specs: 'Parallel evaluation | 76-way Softmax output'
   },
   {
     step: '05',
     title: 'Consensus & Prediction',
-    description: 'Outputs top ISL word class, per-model confidence distributions, latency metrics, and model agreement.',
-    specs: 'Default: MobileNetV2 (67.78% best) + Multi-model agreement'
+    description: 'Outputs per-model predicted classes, confidence distributions, and consensus agreement analysis.',
+    specs: 'Default: MobileNetV2 (67.78% best) + Consensus check'
   }
 ];
 
@@ -183,14 +183,14 @@ export const MOCK_ANALYSIS_PREVIEW: RecognitionAnalysis = {
   isMockData: true,
   primaryPrediction: {
     modelId: 'mobilenetv2',
-    modelName: 'MobileNetV2',
+    modelName: 'MobileNetV2 (Frozen Backbone)',
     word: 'NAMASTE',
     confidence: 0.884
   },
   models: {
     mobilenetv2: {
       modelId: 'mobilenetv2',
-      modelName: 'MobileNetV2',
+      modelName: 'MobileNetV2 (Frozen Backbone)',
       predictedWord: 'NAMASTE',
       confidence: 0.884,
       inferenceTimeMs: 142,
@@ -206,34 +206,34 @@ export const MOCK_ANALYSIS_PREVIEW: RecognitionAnalysis = {
       modelId: 'custom-cnn',
       modelName: 'Custom 2D CNN',
       predictedWord: 'NAMASTE',
-      confidence: 0.742,
+      confidence: 0.324,
       inferenceTimeMs: 98,
       isBestModelOverall: false,
       status: 'success',
       topK: [
-        { word: 'NAMASTE', confidence: 0.742 },
-        { word: 'WELCOME', confidence: 0.121 },
-        { word: 'HELLO', confidence: 0.076 }
+        { word: 'NAMASTE', confidence: 0.324 },
+        { word: 'HELLO', confidence: 0.185 },
+        { word: 'WELCOME', confidence: 0.142 }
       ]
     },
     'cnn-lstm': {
       modelId: 'cnn-lstm',
       modelName: 'CNN-LSTM',
-      predictedWord: 'NAMASTE',
-      confidence: 0.819,
+      predictedWord: 'HELLO',
+      confidence: 0.281,
       inferenceTimeMs: 215,
       isBestModelOverall: false,
       status: 'success',
       topK: [
-        { word: 'NAMASTE', confidence: 0.819 },
-        { word: 'HELLO', confidence: 0.087 },
-        { word: 'THANK YOU', confidence: 0.094 }
+        { word: 'HELLO', confidence: 0.281 },
+        { word: 'NAMASTE', confidence: 0.245 },
+        { word: 'THANK YOU', confidence: 0.114 }
       ]
     }
   },
   agreementStatus: {
-    allAgree: true,
+    allAgree: false,
     majorityAgreedWord: 'NAMASTE',
-    agreementCount: 3
+    agreementCount: 2
   }
 };
