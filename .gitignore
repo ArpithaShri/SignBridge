@@ -33,6 +33,7 @@ wheels/
 venv/
 ENV/
 .venv/
+.pytest_cache/
 
 # Environment variables & secrets
 .env
@@ -49,3 +50,22 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+
+# Python environment and cache
+backend/venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local environment variables
+.env
+.env.*
+!.env.example
+!frontend/.env.example
+
+# Trained model artifacts
+backend/artifacts/
+
+# Keep generated sample videos out of Git
+frontend/public/samples/

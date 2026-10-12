@@ -1,14 +1,14 @@
-import React from 'react';
-import { Layers, Video, BarChart3, Sparkles, Activity } from 'lucide-react';
+import { Layers, Video, BarChart3, Sparkles, CheckCircle2, WifiOff } from 'lucide-react';
 import type { NavigationTab } from '../../types';
 
 interface NavbarProps {
   currentTab: NavigationTab;
   onSelectTab: (tab: NavigationTab) => void;
   isMockMode: boolean;
+  backendConnected: boolean;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab, isMockMode }) => {
+export const Navbar = ({ currentTab, onSelectTab, isMockMode, backendConnected }: NavbarProps) => {
   return (
     <header className="navbar" role="banner">
       <div className="navbar-inner">
@@ -68,18 +68,23 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab, isMockM
         </nav>
 
         <div className="nav-status-group">
-          {isMockMode ? (
-            <div 
-              className="badge badge-amber" 
-              title="Interface is currently running with simulated mock inference data for testing"
+          {backendConnected ? (
+            <div
+              id="badge-backend-status"
+              className="badge badge-success"
+              title="Connected to live Python FastAPI MobileNetV2 backend (Port 8000)"
             >
-              <Activity size={12} />
-              <span>Simulated Mock Mode</span>
+              <CheckCircle2 size={12} />
+              <span>MobileNetV2 Live</span>
             </div>
           ) : (
-            <div className="badge badge-success">
-              <Activity size={12} />
-              <span>Live Backend Connected</span>
+            <div
+              id="badge-backend-status"
+              className="badge badge-amber"
+              title={isMockMode ? "Mock Mode Active: FastAPI backend is offline. Run backend server on port 8000 for real MobileNetV2 inference." : "FastAPI backend is offline."}
+            >
+              <WifiOff size={12} />
+              <span>{isMockMode ? 'Mock Mode' : 'Backend Offline'}</span>
             </div>
           )}
         </div>

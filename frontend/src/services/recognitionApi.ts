@@ -7,12 +7,13 @@ import type {
 } from '../types';
 
 /**
- * Configuration for the future Python (FastAPI / Flask) inference service.
- * In Phase 2 and 3, mock simulation is the active pipeline until the Python backend is integrated.
+ * Configuration for the Python (FastAPI) inference service.
  */
 export const API_CONFIG = {
   BASE_URL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
   ENDPOINT_RECOGNIZE: '/api/v1/recognize',
+  ENDPOINT_HEALTH: '/api/v1/health',
+  ENDPOINT_MODEL_INFO: '/api/v1/model-info',
   ENDPOINT_COMPARE: '/api/v1/compare',
   MAX_FILE_SIZE_BYTES: 100 * 1024 * 1024, // 100 MB
   ALLOWED_EXTENSIONS: ['.mov', '.mp4', '.avi'],
@@ -68,6 +69,50 @@ export function formatFileSize(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+}
+
+/**
+ * Checks connection and model status on the FastAPI backend.
+ */
+export async function checkBackendHealth(): Promise<{
+  isOnline: boolean;
+  modelLoaded: boolean;
+  classesCount?: number;
+  message?: string;
+}> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+    const res = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINT_HEALTH}`, {
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      return {
+        isOnline: true,
+        modelLoaded: false,
+        message: `Backend returned status ${res.status}`
+      };
+    }
+
+    const data = await res.json();
+    return {
+      isOnline: true,
+      modelLoaded: Boolean(data.model_loaded),
+      classesCount: data.classes_count,
+      message: data.model_loaded
+        ? 'MobileNetV2 Model Active'
+        : 'Backend online, but model weights not loaded'
+    };
+  } catch (err: unknown) {
+    return {
+      isOnline: false,
+      modelLoaded: false,
+      message: 'Backend server unreachable at ' + API_CONFIG.BASE_URL
+    };
+  }
 }
 
 /**
@@ -132,19 +177,21 @@ const MOCK_PREDICTION_CANDIDATES = [
 
 /**
  * Primary recognition service method (MobileNetV2 individual predictor).
+ * Defaults to REAL inference via FastAPI backend (simulateMock = false).
+ * Never silently falls back to fabricated predictions on network failure.
  */
 export async function analyzeVideo(
   request: VideoRecognitionRequest,
-  simulateMock: boolean = true
+  simulateMock: boolean = false
 ): Promise<VideoRecognitionResponse> {
   const validation = validateVideoFile(request.videoFile);
   if (!validation.isValid) {
     throw new Error(validation.errorMessage || 'Invalid video file provided');
   }
 
-  // Mock Mode Pipeline
+  // Explicit Mock Mode Pipeline (only when specifically requested)
   if (simulateMock) {
-    await new Promise((resolve) => setTimeout(resolve, 1400));
+    await new Promise((resolve) => setTimeout(resolve, 1200));
 
     const hash = request.videoFile.name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     const candidate = MOCK_PREDICTION_CANDIDATES[hash % MOCK_PREDICTION_CANDIDATES.length];
@@ -166,29 +213,34 @@ export async function analyzeVideo(
         framesSampled: API_CONFIG.DEFAULT_SAMPLE_FRAMES,
         frameResolution: API_CONFIG.DEFAULT_RESOLUTION,
         colorSpace: 'RGB',
-        normalization: 'Normalized to [0, 1]'
+        normalization: 'Normalized to [-1, 1]'
       },
       simulatedLatencyMs: 142,
       timestamp: new Date().toLocaleTimeString()
     };
   }
 
-  // Phase 4: Real Backend Fetch
+  // Real Backend Inference Call
   const formData = new FormData();
   formData.append('video', request.videoFile);
-  formData.append('sampling_frames', String(request.samplingFrames || API_CONFIG.DEFAULT_SAMPLE_FRAMES));
-  if (request.targetModel) {
-    formData.append('target_model', request.targetModel);
-  }
 
-  const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINT_RECOGNIZE}`, {
-    method: 'POST',
-    body: formData
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINT_RECOGNIZE}`, {
+      method: 'POST',
+      body: formData
+    });
+  } catch (err: unknown) {
+    throw new Error(
+      `Cannot connect to SignBridge backend at ${API_CONFIG.BASE_URL}. ` +
+      `Please ensure the FastAPI server is running on port 8000.`
+    );
+  }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Inference server returned error: ${response.status} ${response.statusText}`);
+    const message = errorData.detail || `Server returned error ${response.status}: ${response.statusText}`;
+    throw new Error(message);
   }
 
   const data = await response.json();
@@ -200,7 +252,6 @@ export async function analyzeVideo(
 
 /**
  * Multi-model comparison service method.
- * Runs or simulates parallel evaluation across Custom CNN, MobileNetV2, and CNN-LSTM.
  */
 export async function compareAllModels(
   request: VideoRecognitionRequest,
@@ -211,7 +262,7 @@ export async function compareAllModels(
     throw new Error(validation.errorMessage || 'Invalid video file provided');
   }
 
-  // Mock Mode Pipeline
+  // Mock Mode Pipeline for Multi-Model comparison (Phase 3)
   if (simulateMock) {
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
@@ -307,7 +358,6 @@ export async function compareAllModels(
   // Phase 4: Live multi-model backend integration
   const formData = new FormData();
   formData.append('video', request.videoFile);
-  formData.append('sampling_frames', String(request.samplingFrames || API_CONFIG.DEFAULT_SAMPLE_FRAMES));
 
   const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINT_COMPARE}`, {
     method: 'POST',
