@@ -1,0 +1,123 @@
+import { Award, Info, Sparkles } from 'lucide-react';
+import type { VideoRecognitionResponse } from '../../types';
+
+interface RecognitionResultCardProps {
+  result: VideoRecognitionResponse;
+}
+
+export const RecognitionResultCard = ({ result }: RecognitionResultCardProps) => {
+  const confidencePercent = (result.confidence * 100).toFixed(1);
+
+  return (
+    <div className="glass-card recognition-result-card fade-in" aria-live="polite">
+      <div className="result-card-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Sparkles size={18} style={{ color: 'var(--brand-400)' }} />
+          <span className="result-header-title">Recognition Result</span>
+        </div>
+
+        {result.isMock ? (
+          <span className="badge badge-amber" title="Simulated prediction data for frontend demonstration">
+            Simulated Mock Data
+          </span>
+        ) : (
+          <span className="badge badge-success">Live Model Inference</span>
+        )}
+      </div>
+
+      {result.isMock && (
+        <div className="mock-notice-box" role="status">
+          <Info size={20} style={{ flexShrink: 0, color: 'var(--accent-amber)' }} />
+          <div>
+            <strong style={{ color: '#fff', display: 'block', marginBottom: '2px' }}>
+              Simulated Demonstration Mode (Phase 2)
+            </strong>
+            <p>
+              This predicted word and confidence score are simulated from the 76-class vocabulary for interface testing.
+              Actual neural predictions will be rendered in Phase 4 once the Python inference backend is started.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Primary Recognized Word Display */}
+      <div className="result-word-display-box">
+        <span className="result-word-label">Recognized ISL Sign Word</span>
+        <div className="result-word-primary">{result.predictedWord}</div>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '0.4rem' }}>
+          <span className="badge badge-brand">76-Class ISL Vocabulary</span>
+          <span className="badge badge-muted">Clip: {result.videoName}</span>
+        </div>
+      </div>
+
+      {/* Confidence Score Bar */}
+      <div className="confidence-box">
+        <div className="confidence-header-row">
+          <span className="confidence-label">Prediction Confidence</span>
+          <span className="confidence-percentage">{confidencePercent}%</span>
+        </div>
+        <div className="confidence-bar-track">
+          <div
+            className="confidence-bar-fill"
+            style={{ width: `${confidencePercent}%` }}
+            role="progressbar"
+            aria-valuenow={result.confidence * 100}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          />
+        </div>
+      </div>
+
+      {/* Primary Model Details */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: 'rgba(0, 0, 0, 0.25)',
+          padding: '0.85rem 1rem',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--border-subtle)',
+          flexWrap: 'wrap',
+          gap: '0.5rem'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          <Award size={18} style={{ color: 'var(--brand-400)' }} />
+          <div>
+            <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#fff' }}>
+              {result.modelUsed.name}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+              Top Evaluation Model ({result.modelUsed.testAccuracy}% Test Acc)
+            </div>
+          </div>
+        </div>
+        <span className="badge badge-brand">Primary Predictor</span>
+      </div>
+
+      {/* Top Alternative Candidates */}
+      {result.topK && result.topK.length > 1 && (
+        <div className="topk-container">
+          <span className="topk-title">Top Softmax Candidate Classes</span>
+          {result.topK.map((item, index) => (
+            <div key={item.word} className="topk-item">
+              <span className="topk-word">
+                #{index + 1} {item.word}
+              </span>
+              <span className="topk-score">{(item.confidence * 100).toFixed(1)}%</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Preprocessing Specifications */}
+      <div className="result-specs-footer">
+        <span>Sampling: {result.preprocessing.framesSampled} frames</span>
+        <span>Resolution: {result.preprocessing.frameResolution}</span>
+        <span>Color: {result.preprocessing.colorSpace}</span>
+        <span>Scale: {result.preprocessing.normalization}</span>
+      </div>
+    </div>
+  );
+};

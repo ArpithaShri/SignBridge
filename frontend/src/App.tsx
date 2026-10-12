@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 import { Dashboard } from './components/dashboard/Dashboard';
-import { RecognitionPlaceholder } from './components/recognition/RecognitionPlaceholder';
+import { RecognitionPage } from './components/recognition/RecognitionPage';
 import { ComparisonPlaceholder } from './components/comparison/ComparisonPlaceholder';
 import type { NavigationTab } from './types';
 
@@ -24,7 +24,7 @@ export function App() {
         )}
 
         {currentTab === 'recognition' && (
-          <RecognitionPlaceholder onBackToDashboard={() => setCurrentTab('dashboard')} />
+          <RecognitionPage onNavigate={setCurrentTab} />
         )}
 
         {currentTab === 'comparison' && (

@@ -24,10 +24,16 @@ export interface ModelMetrics {
 export interface VideoMetadata {
   file: File;
   name: string;
-  sizeMB: number;
+  sizeBytes: number;
+  sizeFormatted: string;
   format: string;
   durationSeconds?: number;
   previewUrl: string;
+}
+
+export interface TopKPrediction {
+  word: string;
+  confidence: number;
 }
 
 export interface ModelPrediction {
@@ -39,7 +45,7 @@ export interface ModelPrediction {
   isBestModelOverall: boolean;
   status: 'idle' | 'loading' | 'success' | 'error';
   errorMessage?: string;
-  topK?: { word: string; confidence: number }[];
+  topK?: TopKPrediction[];
 }
 
 export interface RecognitionAnalysis {
@@ -64,4 +70,51 @@ export interface ISLClassInfo {
   index: number;
   word: string;
   category: 'Greetings' | 'Relations' | 'Actions' | 'Nouns' | 'Common Phrases' | 'Numbers';
+}
+
+/* =========================================================================
+   Phase 2: Video Upload, API Contract, and Recognition Response Types
+   ========================================================================= */
+
+export interface VideoRecognitionRequest {
+  videoFile: File;
+  targetModel?: 'mobilenetv2' | 'custom-cnn' | 'cnn-lstm';
+  samplingFrames?: number; // default: 33
+}
+
+export interface VideoRecognitionResponse {
+  success: boolean;
+  isMock: boolean;
+  videoName: string;
+  predictedWord: string;
+  confidence: number; // 0.0 to 1.0
+  modelUsed: {
+    id: string;
+    name: string;
+    testAccuracy: number;
+    architecture: string;
+  };
+  topK: TopKPrediction[];
+  preprocessing: {
+    framesSampled: number;
+    frameResolution: string;
+    colorSpace: string;
+    normalization: string;
+  };
+  simulatedLatencyMs?: number;
+  timestamp: string;
+  error?: string;
+}
+
+export type UploadValidationCode = 
+  | 'VALID'
+  | 'INVALID_FORMAT'
+  | 'FILE_TOO_LARGE'
+  | 'EMPTY_FILE';
+
+export interface FileValidationResult {
+  isValid: boolean;
+  code: UploadValidationCode;
+  errorMessage?: string;
+  extension?: string;
 }
