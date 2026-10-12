@@ -18,7 +18,8 @@ from app.config import (
     FRAMES_PER_VIDEO,
     IMAGE_SIZE,
     MODEL_PATH,
-    CLASS_MAPPING_PATH
+    CLASS_MAPPING_PATH,
+    CORS_ORIGIN_REGEX
 )
 from app.preprocessing import extract_rgb_frames
 from app.inference import engine
@@ -55,10 +56,11 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS middleware for local Vite frontend
+# CORS middleware for local Vite frontend across all ports
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
+    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -72,47 +72,75 @@ export function formatFileSize(bytes: number): string {
 }
 
 /**
+ * Active base URL state (defaults to configured env or port 8000).
+ * Dynamically updates to any live local backend port (8000, 8001, etc.).
+ */
+let activeBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
+export function getActiveBackendUrl(): string {
+  return activeBaseUrl;
+}
+
+const CANDIDATE_PORTS = ['8000', '8001'];
+const getCandidateUrls = () => {
+  const list = [activeBaseUrl];
+  if (import.meta.env.VITE_API_BASE_URL) {
+    list.push(import.meta.env.VITE_API_BASE_URL);
+  }
+  CANDIDATE_PORTS.forEach((p) => {
+    list.push(`http://localhost:${p}`);
+    list.push(`http://127.0.0.1:${p}`);
+  });
+  return Array.from(new Set(list));
+};
+
+/**
  * Checks connection and model status on the FastAPI backend.
+ * Checks the configured URL first, and smoothly falls back to any live local port.
  */
 export async function checkBackendHealth(): Promise<{
   isOnline: boolean;
   modelLoaded: boolean;
   classesCount?: number;
   message?: string;
+  activeUrl?: string;
 }> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
+  const candidates = getCandidateUrls();
 
-    const res = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINT_HEALTH}`, {
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
+  for (const url of candidates) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
 
-    if (!res.ok) {
-      return {
-        isOnline: true,
-        modelLoaded: false,
-        message: `Backend returned status ${res.status}`
-      };
+      const res = await fetch(`${url}${API_CONFIG.ENDPOINT_HEALTH}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json();
+        activeBaseUrl = url;
+        return {
+          isOnline: true,
+          modelLoaded: Boolean(data.model_loaded),
+          classesCount: data.classes_count,
+          activeUrl: url,
+          message: data.model_loaded
+            ? `MobileNetV2 Model Active (${url})`
+            : `Backend online at ${url}, but model weights not loaded`
+        };
+      }
+    } catch {
+      // Continue to next candidate port
     }
-
-    const data = await res.json();
-    return {
-      isOnline: true,
-      modelLoaded: Boolean(data.model_loaded),
-      classesCount: data.classes_count,
-      message: data.model_loaded
-        ? 'MobileNetV2 Model Active'
-        : 'Backend online, but model weights not loaded'
-    };
-  } catch (err: unknown) {
-    return {
-      isOnline: false,
-      modelLoaded: false,
-      message: 'Backend server unreachable at ' + API_CONFIG.BASE_URL
-    };
   }
+
+  return {
+    isOnline: false,
+    modelLoaded: false,
+    activeUrl: activeBaseUrl,
+    message: `Backend unreachable at ${activeBaseUrl}. Please ensure FastAPI is running on port 8000 or 8001.`
+  };
 }
 
 /**
@@ -226,14 +254,14 @@ export async function analyzeVideo(
 
   let response: Response;
   try {
-    response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINT_RECOGNIZE}`, {
+    response = await fetch(`${activeBaseUrl}${API_CONFIG.ENDPOINT_RECOGNIZE}`, {
       method: 'POST',
       body: formData
     });
   } catch (err: unknown) {
     throw new Error(
-      `Cannot connect to SignBridge backend at ${API_CONFIG.BASE_URL}. ` +
-      `Please ensure the FastAPI server is running on port 8000.`
+      `Cannot connect to SignBridge backend at ${activeBaseUrl}. ` +
+      `Please ensure the FastAPI server is running with: cd backend && py -3.11 -m uvicorn app.main:app --port 8000`
     );
   }
 
@@ -359,7 +387,7 @@ export async function compareAllModels(
   const formData = new FormData();
   formData.append('video', request.videoFile);
 
-  const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINT_COMPARE}`, {
+  const response = await fetch(`${activeBaseUrl}${API_CONFIG.ENDPOINT_COMPARE}`, {
     method: 'POST',
     body: formData
   });
