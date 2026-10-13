@@ -267,6 +267,38 @@ export async function analyzeVideo(
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+
+    // 503: Model weights not found on disk — auto-fallback to mock inference
+    if (response.status === 503) {
+      console.warn('[SignBridge] Backend model weights not loaded — falling back to mock inference.');
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      const hash = request.videoFile.name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+      const candidate = MOCK_PREDICTION_CANDIDATES[hash % MOCK_PREDICTION_CANDIDATES.length];
+      return {
+        success: true,
+        isMock: true,
+        videoName: request.videoFile.name,
+        predictedWord: candidate.primary,
+        confidence: candidate.confidence,
+        modelUsed: {
+          id: 'mobilenetv2',
+          name: 'MobileNetV2 (Frozen Backbone)',
+          testAccuracy: 67.78,
+          architecture: 'Pretrained ImageNet Visual Extractor + Global Avg Pooling'
+        },
+        topK: candidate.topK,
+        preprocessing: {
+          framesSampled: API_CONFIG.DEFAULT_SAMPLE_FRAMES,
+          frameResolution: API_CONFIG.DEFAULT_RESOLUTION,
+          colorSpace: 'RGB',
+          normalization: 'Normalized to [-1, 1]'
+        },
+        simulatedLatencyMs: 142,
+        timestamp: new Date().toLocaleTimeString(),
+        error: 'Model weights not found on server — showing simulated prediction. Place mobilenetv2_frozen_best.keras in backend/artifacts/mobilenetv2_frozen/ for live inference.'
+      };
+    }
+
     const message = errorData.detail || `Server returned error ${response.status}: ${response.statusText}`;
     throw new Error(message);
   }

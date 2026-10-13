@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { RotateCcw, Play, Sparkles, AlertCircle, FileVideo, BarChart2 } from 'lucide-react';
+import { RotateCcw, Play, Sparkles, AlertCircle, FileVideo, BarChart2, Camera } from 'lucide-react';
 import { VideoUploader } from './VideoUploader';
 import { VideoPreviewCard } from './VideoPreviewCard';
 import { RecognitionResultCard } from './RecognitionResultCard';
+import { WebcamRecorder } from './WebcamRecorder';
 import { analyzeVideo, validateVideoFile } from '../../services/recognitionApi';
 import type { VideoRecognitionResponse, NavigationTab } from '../../types';
 
@@ -85,6 +86,7 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<VideoRecognitionResponse | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [showWebcam, setShowWebcam] = useState(false);
 
   // Clean up object URL when component unmounts or file changes
   useEffect(() => {
@@ -156,6 +158,11 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
     setIsAnalyzing(false);
   };
 
+  const handleWebcamRecording = (file: File) => {
+    setShowWebcam(false);
+    handleFileSelected(file);
+  };
+
   const handleLoadSampleVideo = async (filename: string, wordLabel: string) => {
     const sampleFile = await createSyntheticVideoFile(filename, wordLabel);
     handleFileSelected(sampleFile);
@@ -177,49 +184,147 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
         </p>
       </div>
 
-      {/* Quick Test Demo Bar */}
+      {/* Input Method Toggle Row — Webcam | Upload */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr auto 1fr',
+          alignItems: 'stretch',
+          gap: '1rem',
+          marginBottom: '0.25rem'
+        }}
+      >
+        {/* Option A: Webcam */}
+        <button
+          id="btn-open-webcam"
+          type="button"
+          onClick={() => { setShowWebcam((v) => !v); }}
+          style={{
+            background: showWebcam
+              ? 'linear-gradient(135deg, rgba(99,102,241,0.28) 0%, rgba(139,92,246,0.18) 100%)'
+              : 'rgba(255,255,255,0.03)',
+            border: showWebcam
+              ? '1.5px solid rgba(99,102,241,0.6)'
+              : '1.5px dashed rgba(255,255,255,0.14)',
+            borderRadius: '12px',
+            padding: '1.1rem 1.25rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.85rem',
+            textAlign: 'left',
+            transition: 'all 0.2s ease',
+            color: '#fff'
+          }}
+        >
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: '50%',
+              background: showWebcam
+                ? 'rgba(99,102,241,0.35)'
+                : 'rgba(99,102,241,0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              border: '1px solid rgba(99,102,241,0.4)'
+            }}
+          >
+            <Camera size={20} style={{ color: 'var(--brand-400)' }} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.925rem', color: showWebcam ? 'var(--brand-400)' : '#fff' }}>
+              {showWebcam ? 'Hide Camera ↑' : '🎥 Record via Webcam'}
+            </div>
+            <div style={{ fontSize: '0.775rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+              Record a live sign gesture with your camera
+            </div>
+          </div>
+        </button>
+
+        {/* OR Divider */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+          <div style={{ width: 1, flex: 1, background: 'rgba(255,255,255,0.08)' }} />
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontWeight: 600, letterSpacing: '0.08em' }}>OR</span>
+          <div style={{ width: 1, flex: 1, background: 'rgba(255,255,255,0.08)' }} />
+        </div>
+
+        {/* Option B: Upload file */}
+        <div
+          style={{
+            background: 'rgba(255,255,255,0.03)',
+            border: '1.5px dashed rgba(255,255,255,0.14)',
+            borderRadius: '12px',
+            padding: '1.1rem 1.25rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.85rem',
+            color: '#fff'
+          }}
+        >
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: '50%',
+              background: 'rgba(6,182,212,0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              border: '1px solid rgba(6,182,212,0.35)'
+            }}
+          >
+            <FileVideo size={20} style={{ color: 'var(--accent-cyan)' }} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.925rem' }}>📂 Upload a Video File</div>
+            <div style={{ fontSize: '0.775rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+              .MOV, .MP4, .AVI — drag & drop or browse below
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Webcam Recorder Panel (expands when camera is open) */}
+      {showWebcam && (
+        <WebcamRecorder
+          onRecordingComplete={handleWebcamRecording}
+          onClose={() => setShowWebcam(false)}
+        />
+      )}
+
+      {/* Quick Sample Clips Bar */}
       <div
         className="glass-card"
         style={{
-          padding: '0.85rem 1.25rem',
+          padding: '0.7rem 1.25rem',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '0.75rem'
+          gap: '0.75rem',
+          flexWrap: 'wrap'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-          <FileVideo size={16} style={{ color: 'var(--brand-400)' }} />
-          <span style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-            Quick Sample Test Clips:
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <FileVideo size={14} style={{ color: 'var(--brand-400)' }} />
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+            Sample Clips:
           </span>
         </div>
-
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <button
-            id="btn-sample-namaste"
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => handleLoadSampleVideo('namaste_sign_clip.MOV', 'NAMASTE')}
-          >
-            Load <code>namaste_sign.MOV</code>
+          <button id="btn-sample-namaste" type="button" className="btn btn-secondary btn-sm"
+            onClick={() => handleLoadSampleVideo('namaste_sign_clip.MOV', 'NAMASTE')}>
+            <code>namaste.MOV</code>
           </button>
-          <button
-            id="btn-sample-thankyou"
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => handleLoadSampleVideo('thank_you_sign_clip.MOV', 'THANK YOU')}
-          >
-            Load <code>thank_you_sign.MOV</code>
+          <button id="btn-sample-thankyou" type="button" className="btn btn-secondary btn-sm"
+            onClick={() => handleLoadSampleVideo('thank_you_sign_clip.MOV', 'THANK YOU')}>
+            <code>thank_you.MOV</code>
           </button>
-          <button
-            id="btn-sample-water"
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => handleLoadSampleVideo('water_sign_clip.MOV', 'WATER')}
-          >
-            Load <code>water_sign.MOV</code>
+          <button id="btn-sample-water" type="button" className="btn btn-secondary btn-sm"
+            onClick={() => handleLoadSampleVideo('water_sign_clip.MOV', 'WATER')}>
+            <code>water.MOV</code>
           </button>
         </div>
       </div>
@@ -235,6 +340,7 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
               errorMessage={validationError}
               onClearError={() => setValidationError(null)}
             />
+
           ) : (
             <>
               {previewUrl && (
