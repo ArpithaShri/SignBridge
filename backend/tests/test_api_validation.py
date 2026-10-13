@@ -158,3 +158,76 @@ def test_recognize_cnn_lstm(client):
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+
+
+def test_recognize_late_fusion(client):
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        create_test_video(tmp_path, num_frames=12)
+        with open(tmp_path, "rb") as video_file:
+            response = client.post(
+                "/api/v1/recognize",
+                data={"model": "late_fusion"},
+                files={"video": ("test_gesture.mp4", video_file, "video/mp4")}
+            )
+
+        if response.status_code == 200:
+            data = response.json()
+            assert data["success"] is True
+            assert data["isMock"] is False
+            assert data["modelUsed"]["id"] == "late_fusion"
+            assert len(data["topK"]) == 5
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
+def test_compare_endpoint(client):
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        create_test_video(tmp_path, num_frames=12)
+        with open(tmp_path, "rb") as video_file:
+            response = client.post(
+                "/api/v1/compare",
+                files={"video": ("test_gesture.mp4", video_file, "video/mp4")}
+            )
+
+        if response.status_code == 200:
+            data = response.json()
+            assert data["isMockData"] is False
+            assert "primaryPrediction" in data
+            assert "models" in data
+            assert "mobilenetv2" in data["models"]
+            assert "custom-cnn" in data["models"]
+            assert "cnn-lstm" in data["models"]
+            assert "agreementStatus" in data
+            assert isinstance(data["agreementStatus"]["allAgree"], bool)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
+def test_recognize_webm_file(client):
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        create_test_video(tmp_path, num_frames=12)
+        with open(tmp_path, "rb") as video_file:
+            response = client.post(
+                "/api/v1/recognize",
+                files={"video": ("test_webcam.webm", video_file, "video/webm")}
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["isMock"] is False
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+

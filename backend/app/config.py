@@ -13,7 +13,7 @@ FRAMES_PER_VIDEO = int(os.getenv("FRAMES_PER_VIDEO", "33"))
 IMAGE_SIZE_DEFAULT = int(os.getenv("IMAGE_SIZE", "224"))
 IMAGE_SIZE_LSTM = int(os.getenv("IMAGE_SIZE_LSTM", "112"))
 MAX_FILE_SIZE_BYTES = int(os.getenv("MAX_FILE_SIZE_BYTES", str(100 * 1024 * 1024))) # 100 MB
-ALLOWED_EXTENSIONS = {".mov", ".mp4", ".avi"}
+ALLOWED_EXTENSIONS = {".mov", ".mp4", ".avi", ".webm"}
 
 # Model Catalog & Metadata
 MODEL_REGISTRY: Dict[str, Dict[str, Any]] = {
@@ -73,6 +73,25 @@ MODEL_REGISTRY: Dict[str, Dict[str, Any]] = {
         "input_mode": "frame_sequence",
         "aggregation": "sequence-level LSTM output (no frame averaging)",
         "is_default": False
+    },
+    "late_fusion": {
+        "id": "late_fusion",
+        "name": "Tri-Model Late Fusion Ensemble (Equal-Weight)",
+        "model_dir": ARTIFACTS_DIR,
+        "model_file": None,
+        "mapping_file": ARTIFACTS_DIR / "mobilenetv2_frozen" / "class_mapping.json",
+        "test_accuracy": 67.78,
+        "architecture": "Equal-weight late-fusion probability average of MobileNetV2, Custom CNN, and CNN-LSTM",
+        "tagline": "Tri-model late fusion ensemble combining all probability distributions",
+        "input_shape": [None, 33, 224, 224, 3],
+        "frame_count": 33,
+        "image_size": 224,
+        "color_space": "RGB",
+        "normalization": "Model-specific branch normalization",
+        "input_scale": "Hybrid [0, 255] and [0, 1]",
+        "input_mode": "multi_branch",
+        "aggregation": "equal-weight probability average: (P_mobilenet + P_custom + P_lstm) / 3",
+        "is_default": False
     }
 }
 
@@ -89,7 +108,11 @@ MODEL_ALIASES = {
     "cnn_baseline": "custom_cnn",
     "cnn_lstm": "cnn_lstm",
     "cnn-lstm": "cnn_lstm",
-    "lstm": "cnn_lstm"
+    "lstm": "cnn_lstm",
+    "late_fusion": "late_fusion",
+    "late-fusion": "late_fusion",
+    "fusion": "late_fusion",
+    "ensemble": "late_fusion"
 }
 
 

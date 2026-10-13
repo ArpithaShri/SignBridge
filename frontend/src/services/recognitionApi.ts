@@ -2,8 +2,7 @@ import type {
   VideoRecognitionRequest,
   VideoRecognitionResponse,
   FileValidationResult,
-  RecognitionAnalysis,
-  ModelPrediction
+  RecognitionAnalysis
 } from '../types';
 
 /**
@@ -16,7 +15,7 @@ export const API_CONFIG = {
   ENDPOINT_MODEL_INFO: '/api/v1/model-info',
   ENDPOINT_COMPARE: '/api/v1/compare',
   MAX_FILE_SIZE_BYTES: 100 * 1024 * 1024, // 100 MB
-  ALLOWED_EXTENSIONS: ['.mov', '.mp4', '.avi'],
+  ALLOWED_EXTENSIONS: ['.mov', '.mp4', '.avi', '.webm'],
   DEFAULT_SAMPLE_FRAMES: 33,
   DEFAULT_RESOLUTION: '224 × 224 RGB'
 };
@@ -104,6 +103,7 @@ export async function checkBackendHealth(): Promise<{
   classesCount?: number;
   message?: string;
   activeUrl?: string;
+  models?: Record<string, boolean>;
 }> {
   const candidates = getCandidateUrls();
 
@@ -125,8 +125,9 @@ export async function checkBackendHealth(): Promise<{
           modelLoaded: Boolean(data.model_loaded),
           classesCount: data.classes_count,
           activeUrl: url,
+          models: data.models,
           message: data.model_loaded
-            ? `MobileNetV2 Model Active (${url})`
+            ? `SignBridge Neural Engine Active (${url})`
             : `Backend online at ${url}, but model weights not loaded`
         };
       }
@@ -144,113 +145,27 @@ export async function checkBackendHealth(): Promise<{
 }
 
 /**
- * Sample pool of authentic ISL words from the 76-class dataset used for mock testing.
- */
-const MOCK_PREDICTION_CANDIDATES = [
-  {
-    primary: 'NAMASTE',
-    confidence: 0.884,
-    topK: [
-      { word: 'NAMASTE', confidence: 0.884 },
-      { word: 'THANK YOU', confidence: 0.052 },
-      { word: 'HELLO', confidence: 0.038 }
-    ]
-  },
-  {
-    primary: 'THANK YOU',
-    confidence: 0.912,
-    topK: [
-      { word: 'THANK YOU', confidence: 0.912 },
-      { word: 'WELCOME', confidence: 0.046 },
-      { word: 'PLEASE', confidence: 0.021 }
-    ]
-  },
-  {
-    primary: 'HELLO',
-    confidence: 0.847,
-    topK: [
-      { word: 'HELLO', confidence: 0.847 },
-      { word: 'NAMASTE', confidence: 0.091 },
-      { word: 'MORNING', confidence: 0.034 }
-    ]
-  },
-  {
-    primary: 'WATER',
-    confidence: 0.875,
-    topK: [
-      { word: 'WATER', confidence: 0.875 },
-      { word: 'DRINK', confidence: 0.078 },
-      { word: 'FOOD', confidence: 0.025 }
-    ]
-  },
-  {
-    primary: 'HELP',
-    confidence: 0.863,
-    topK: [
-      { word: 'HELP', confidence: 0.863 },
-      { word: 'DOCTOR', confidence: 0.068 },
-      { word: 'HOSPITAL', confidence: 0.042 }
-    ]
-  },
-  {
-    primary: 'FAMILY',
-    confidence: 0.829,
-    topK: [
-      { word: 'FAMILY', confidence: 0.829 },
-      { word: 'FRIEND', confidence: 0.098 },
-      { word: 'FATHER', confidence: 0.045 }
-    ]
-  }
-];
-
-/**
- * Primary recognition service method (MobileNetV2 individual predictor).
- * Defaults to REAL inference via FastAPI backend (simulateMock = false).
- * Never silently falls back to fabricated predictions on network failure.
+ * Primary recognition service method.
+ * Runs REAL neural inference via the FastAPI backend on the requested model:
+ * - mobilenetv2 (Default)
+ * - custom_cnn
+ * - cnn_lstm
+ * - late_fusion (Optional equal-weight ensemble)
+ * Never fabricates or falls back to simulated predictions.
  */
 export async function analyzeVideo(
-  request: VideoRecognitionRequest,
-  simulateMock: boolean = false
+  request: VideoRecognitionRequest
 ): Promise<VideoRecognitionResponse> {
   const validation = validateVideoFile(request.videoFile);
   if (!validation.isValid) {
     throw new Error(validation.errorMessage || 'Invalid video file provided');
   }
 
-  // Explicit Mock Mode Pipeline (only when specifically requested)
-  if (simulateMock) {
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-
-    const hash = request.videoFile.name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const candidate = MOCK_PREDICTION_CANDIDATES[hash % MOCK_PREDICTION_CANDIDATES.length];
-
-    return {
-      success: true,
-      isMock: true,
-      videoName: request.videoFile.name,
-      predictedWord: candidate.primary,
-      confidence: candidate.confidence,
-      modelUsed: {
-        id: 'mobilenetv2',
-        name: 'MobileNetV2 (Frozen Backbone)',
-        testAccuracy: 67.78,
-        architecture: 'Pretrained ImageNet Visual Extractor + Global Avg Pooling'
-      },
-      topK: candidate.topK,
-      preprocessing: {
-        framesSampled: API_CONFIG.DEFAULT_SAMPLE_FRAMES,
-        frameResolution: API_CONFIG.DEFAULT_RESOLUTION,
-        colorSpace: 'RGB',
-        normalization: 'Normalized to [-1, 1]'
-      },
-      simulatedLatencyMs: 142,
-      timestamp: new Date().toLocaleTimeString()
-    };
-  }
-
-  // Real Backend Inference Call
   const formData = new FormData();
   formData.append('video', request.videoFile);
+  if (request.targetModel) {
+    formData.append('model', request.targetModel);
+  }
 
   let response: Response;
   try {
@@ -261,44 +176,12 @@ export async function analyzeVideo(
   } catch (err: unknown) {
     throw new Error(
       `Cannot connect to SignBridge backend at ${activeBaseUrl}. ` +
-      `Please ensure the FastAPI server is running with: cd backend && py -3.11 -m uvicorn app.main:app --port 8000`
+      `Please ensure the FastAPI server is running with: cd backend && venv\\Scripts\\python -m uvicorn app.main:app --port 8000`
     );
   }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-
-    // 503: Model weights not found on disk — auto-fallback to mock inference
-    if (response.status === 503) {
-      console.warn('[SignBridge] Backend model weights not loaded — falling back to mock inference.');
-      await new Promise((resolve) => setTimeout(resolve, 1200));
-      const hash = request.videoFile.name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-      const candidate = MOCK_PREDICTION_CANDIDATES[hash % MOCK_PREDICTION_CANDIDATES.length];
-      return {
-        success: true,
-        isMock: true,
-        videoName: request.videoFile.name,
-        predictedWord: candidate.primary,
-        confidence: candidate.confidence,
-        modelUsed: {
-          id: 'mobilenetv2',
-          name: 'MobileNetV2 (Frozen Backbone)',
-          testAccuracy: 67.78,
-          architecture: 'Pretrained ImageNet Visual Extractor + Global Avg Pooling'
-        },
-        topK: candidate.topK,
-        preprocessing: {
-          framesSampled: API_CONFIG.DEFAULT_SAMPLE_FRAMES,
-          frameResolution: API_CONFIG.DEFAULT_RESOLUTION,
-          colorSpace: 'RGB',
-          normalization: 'Normalized to [-1, 1]'
-        },
-        simulatedLatencyMs: 142,
-        timestamp: new Date().toLocaleTimeString(),
-        error: 'Model weights not found on server — showing simulated prediction. Place mobilenetv2_frozen_best.keras in backend/artifacts/mobilenetv2_frozen/ for live inference.'
-      };
-    }
-
     const message = errorData.detail || `Server returned error ${response.status}: ${response.statusText}`;
     throw new Error(message);
   }
@@ -312,122 +195,42 @@ export async function analyzeVideo(
 
 /**
  * Multi-model comparison service method.
+ * Sends the video to POST /api/v1/compare to execute real inference across
+ * MobileNetV2, Custom CNN, and CNN-LSTM simultaneously and compute cross-model consensus.
  */
 export async function compareAllModels(
-  request: VideoRecognitionRequest,
-  simulateMock: boolean = true
+  request: VideoRecognitionRequest
 ): Promise<RecognitionAnalysis> {
   const validation = validateVideoFile(request.videoFile);
   if (!validation.isValid) {
     throw new Error(validation.errorMessage || 'Invalid video file provided');
   }
 
-  // Mock Mode Pipeline for Multi-Model comparison (Phase 3)
-  if (simulateMock) {
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
-    const hash = request.videoFile.name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const candidate = MOCK_PREDICTION_CANDIDATES[hash % MOCK_PREDICTION_CANDIDATES.length];
-
-    const customAgrees = hash % 2 === 0;
-    const lstmAgrees = hash % 3 !== 0;
-
-    const customWord = customAgrees ? candidate.primary : (candidate.topK[1]?.word || 'HELLO');
-    const lstmWord = lstmAgrees ? candidate.primary : (candidate.topK[2]?.word || 'THANK YOU');
-
-    const mobilenetPred: ModelPrediction = {
-      modelId: 'mobilenetv2',
-      modelName: 'MobileNetV2 (Frozen Backbone)',
-      predictedWord: candidate.primary,
-      confidence: candidate.confidence,
-      inferenceTimeMs: 142,
-      isBestModelOverall: true,
-      status: 'success',
-      topK: candidate.topK
-    };
-
-    const customPred: ModelPrediction = {
-      modelId: 'custom-cnn',
-      modelName: 'Custom 2D CNN',
-      predictedWord: customWord,
-      confidence: customAgrees ? 0.384 : 0.295,
-      inferenceTimeMs: 98,
-      isBestModelOverall: false,
-      status: 'success',
-      topK: [
-        { word: customWord, confidence: customAgrees ? 0.384 : 0.295 },
-        { word: candidate.topK[1]?.word || 'WATER', confidence: 0.182 },
-        { word: candidate.topK[2]?.word || 'HELP', confidence: 0.141 }
-      ]
-    };
-
-    const lstmPred: ModelPrediction = {
-      modelId: 'cnn-lstm',
-      modelName: 'CNN-LSTM',
-      predictedWord: lstmWord,
-      confidence: lstmAgrees ? 0.342 : 0.264,
-      inferenceTimeMs: 215,
-      isBestModelOverall: false,
-      status: 'success',
-      topK: [
-        { word: lstmWord, confidence: lstmAgrees ? 0.342 : 0.264 },
-        { word: candidate.primary, confidence: 0.218 },
-        { word: 'NAMASTE', confidence: 0.125 }
-      ]
-    };
-
-    // Calculate model agreement
-    const words = [mobilenetPred.predictedWord, customPred.predictedWord, lstmPred.predictedWord];
-    const wordCounts: Record<string, number> = {};
-    words.forEach((w) => {
-      wordCounts[w] = (wordCounts[w] || 0) + 1;
-    });
-
-    let maxCount = 0;
-    let majorityWord = mobilenetPred.predictedWord;
-    Object.entries(wordCounts).forEach(([w, count]) => {
-      if (count > maxCount) {
-        maxCount = count;
-        majorityWord = w;
-      }
-    });
-
-    return {
-      videoName: request.videoFile.name,
-      analyzedAt: new Date().toLocaleTimeString(),
-      isMockData: true,
-      primaryPrediction: {
-        modelId: 'mobilenetv2',
-        modelName: 'MobileNetV2 (Frozen Backbone)',
-        word: mobilenetPred.predictedWord,
-        confidence: mobilenetPred.confidence
-      },
-      models: {
-        mobilenetv2: mobilenetPred,
-        'custom-cnn': customPred,
-        'cnn-lstm': lstmPred
-      },
-      agreementStatus: {
-        allAgree: maxCount === 3,
-        majorityAgreedWord: majorityWord,
-        agreementCount: maxCount
-      }
-    };
-  }
-
-  // Phase 4: Live multi-model backend integration
   const formData = new FormData();
   formData.append('video', request.videoFile);
 
-  const response = await fetch(`${activeBaseUrl}${API_CONFIG.ENDPOINT_COMPARE}`, {
-    method: 'POST',
-    body: formData
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${activeBaseUrl}${API_CONFIG.ENDPOINT_COMPARE}`, {
+      method: 'POST',
+      body: formData
+    });
+  } catch (err: unknown) {
+    throw new Error(
+      `Cannot connect to SignBridge backend at ${activeBaseUrl}. ` +
+      `Please ensure the FastAPI server is running.`
+    );
+  }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Comparison server error: ${response.status}`);
+    throw new Error(errorData.detail || `Comparison server error ${response.status}: ${response.statusText}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  return {
+    ...data,
+    isMockData: false
+  };
 }
+

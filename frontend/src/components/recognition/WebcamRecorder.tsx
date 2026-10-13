@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Video, Square, Camera, CameraOff, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Video, Square, Camera, AlertCircle, CheckCircle2, RotateCcw, X } from 'lucide-react';
 
 interface WebcamRecorderProps {
   onRecordingComplete: (file: File) => void;
@@ -23,50 +23,93 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Cleanup on unmount
+  const stopStream = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {
+          // ignore track stop error
+        }
+      });
+      streamRef.current = null;
+    }
+  }, []);
+
+  // Cleanup on unmount or when modal is closed
   useEffect(() => {
     return () => {
       stopStream();
       if (timerRef.current) clearInterval(timerRef.current);
       if (recordedUrl) URL.revokeObjectURL(recordedUrl);
     };
-  }, []);
+  }, [stopStream, recordedUrl]);
 
-  const stopStream = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
+  // Synchronize stream with video element whenever state transitions to preview or recording
+  useEffect(() => {
+    if ((state === 'preview' || state === 'recording') && videoRef.current && streamRef.current) {
+      if (videoRef.current.srcObject !== streamRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+      }
+      videoRef.current.muted = true;
+      videoRef.current.play().catch((err) => {
+        console.warn('Video preview play notification:', err);
+      });
     }
-  };
+  }, [state]);
 
   const startCamera = useCallback(async () => {
     setState('requesting');
     setErrorMsg(null);
 
     try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Webcam media capture is not supported in this browser.');
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+        video: {
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          facingMode: 'user'
+        },
         audio: false
       });
+
       streamRef.current = stream;
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.muted = true;
-        await videoRef.current.play();
+        await videoRef.current.play().catch(() => {});
       }
+
       setState('preview');
     } catch (err: unknown) {
-      const msg =
-        err instanceof DOMException && err.name === 'NotAllowedError'
-          ? 'Camera permission denied. Please allow camera access in your browser settings.'
-          : err instanceof DOMException && err.name === 'NotFoundError'
-          ? 'No camera device found. Please connect a webcam.'
-          : `Could not access camera: ${err instanceof Error ? err.message : String(err)}`;
+      let msg = 'Could not access camera device.';
+      if (err instanceof DOMException) {
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          msg = 'Camera permission denied. Please allow camera access in your browser settings to record sign gestures.';
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          msg = 'No camera device found. Please connect a webcam or enable your device camera.';
+        } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+          msg = 'Camera is currently in use by another program or browser tab.';
+        } else {
+          msg = `Camera error (${err.name}): ${err.message}`;
+        }
+      } else if (err instanceof Error) {
+        msg = err.message;
+      }
+
       setErrorMsg(msg);
       setState('error');
     }
   }, []);
+
+  // Automatically request camera when recorder opens
+  useEffect(() => {
+    startCamera();
+  }, [startCamera]);
 
   const startRecording = () => {
     if (!streamRef.current) return;
@@ -74,52 +117,64 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
     chunksRef.current = [];
     setElapsed(0);
     setRecordedBlob(null);
-    if (recordedUrl) URL.revokeObjectURL(recordedUrl);
-    setRecordedUrl(null);
+    if (recordedUrl) {
+      URL.revokeObjectURL(recordedUrl);
+      setRecordedUrl(null);
+    }
 
-    // Prefer mp4 > webm
-    const mimeType = MediaRecorder.isTypeSupported('video/mp4')
-      ? 'video/mp4'
-      : MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-      ? 'video/webm;codecs=vp9'
-      : 'video/webm';
+    // Determine highest quality supported mime type
+    let mimeType = 'video/webm';
+    if (MediaRecorder.isTypeSupported('video/mp4')) {
+      mimeType = 'video/mp4';
+    } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+      mimeType = 'video/webm;codecs=vp9';
+    } else if (MediaRecorder.isTypeSupported('video/webm')) {
+      mimeType = 'video/webm';
+    }
 
-    const recorder = new MediaRecorder(streamRef.current, { mimeType });
-    recorderRef.current = recorder;
+    try {
+      const recorder = new MediaRecorder(streamRef.current, { mimeType });
+      recorderRef.current = recorder;
 
-    recorder.ondataavailable = (e) => {
-      if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
-    };
-
-    recorder.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      setRecordedBlob(blob);
-      setRecordedUrl(url);
-      setState('done');
-
-      // Show recorded clip in video element
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-        videoRef.current.src = url;
-        videoRef.current.muted = false;
-        videoRef.current.loop = true;
-        videoRef.current.play().catch(() => {});
-      }
-    };
-
-    recorder.start(200); // collect data every 200ms
-    setState('recording');
-
-    timerRef.current = setInterval(() => {
-      setElapsed((prev) => {
-        const next = prev + 1;
-        if (next >= MAX_RECORD_SECONDS) {
-          stopRecording();
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          chunksRef.current.push(e.data);
         }
-        return next;
-      });
-    }, 1000);
+      };
+
+      recorder.onstop = () => {
+        const finalBlob = new Blob(chunksRef.current, { type: mimeType });
+        const url = URL.createObjectURL(finalBlob);
+        setRecordedBlob(finalBlob);
+        setRecordedUrl(url);
+        setState('done');
+
+        // Play recorded clip preview in video element
+        if (videoRef.current) {
+          videoRef.current.srcObject = null;
+          videoRef.current.src = url;
+          videoRef.current.muted = false;
+          videoRef.current.loop = true;
+          videoRef.current.play().catch(() => {});
+        }
+      };
+
+      recorder.start(100); // 100ms chunk frequency for smooth buffering
+      setState('recording');
+
+      timerRef.current = setInterval(() => {
+        setElapsed((prev) => {
+          const next = prev + 1;
+          if (next >= MAX_RECORD_SECONDS) {
+            stopRecording();
+          }
+          return next;
+        });
+      }, 1000);
+    } catch (err: unknown) {
+      setErrorMsg(`Failed to start recording: ${err instanceof Error ? err.message : String(err)}`);
+      setState('error');
+    }
   };
 
   const stopRecording = () => {
@@ -128,29 +183,53 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
       timerRef.current = null;
     }
     if (recorderRef.current && recorderRef.current.state !== 'inactive') {
-      recorderRef.current.stop();
+      try {
+        recorderRef.current.stop();
+      } catch {
+        // ignore recorder stop errors
+      }
     }
     stopStream();
   };
 
   const handleUseRecording = () => {
     if (!recordedBlob) return;
-    const ext = recordedBlob.type.includes('mp4') ? 'mp4' : 'webm';
-    const file = new File([recordedBlob], `webcam_sign_recording.${ext}`, {
-      type: recordedBlob.type,
+    const isMp4 = recordedBlob.type.includes('mp4');
+    const ext = isMp4 ? 'mp4' : 'webm';
+    const filename = `isl_recording_${Date.now()}.${ext}`;
+    const file = new File([recordedBlob], filename, {
+      type: recordedBlob.type || 'video/webm',
       lastModified: Date.now()
     });
+
+    stopStream();
     onRecordingComplete(file);
   };
 
   const handleRetake = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
     setRecordedBlob(null);
     if (recordedUrl) {
       URL.revokeObjectURL(recordedUrl);
       setRecordedUrl(null);
     }
     setElapsed(0);
-    setState('idle');
+    startCamera();
+  };
+
+  const handleClose = () => {
+    stopStream();
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    if (recordedUrl) {
+      URL.revokeObjectURL(recordedUrl);
+    }
+    onClose();
   };
 
   const remainingSeconds = MAX_RECORD_SECONDS - elapsed;
@@ -158,23 +237,45 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
 
   return (
     <div
-      className="glass-card"
+      className="glass-card fade-in"
       style={{
         display: 'flex',
         flexDirection: 'column',
         gap: '1rem',
         padding: '1.5rem',
-        border: '1px solid rgba(99,102,241,0.35)',
-        position: 'relative'
+        border: '1.5px solid rgba(99,102,241,0.4)',
+        background: 'rgba(15, 23, 42, 0.85)',
+        backdropFilter: 'blur(16px)',
+        borderRadius: '16px',
+        position: 'relative',
+        boxShadow: '0 12px 36px rgba(0,0,0,0.45)'
       }}
     >
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-          <Camera size={18} style={{ color: 'var(--brand-400)' }} />
-          <span style={{ fontWeight: 700, color: '#fff', fontSize: '0.95rem' }}>
-            Live Webcam Recording
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: '8px',
+              background: 'rgba(99,102,241,0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: '1px solid rgba(99,102,241,0.35)'
+            }}
+          >
+            <Camera size={18} style={{ color: 'var(--brand-400)' }} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.95rem' }}>
+              Live Camera Gesture Recorder
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+              Uniform 33-frame extraction applied on completion
+            </div>
+          </div>
           {state === 'recording' && (
             <span
               className="badge"
@@ -182,11 +283,11 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
                 background: 'rgba(239,68,68,0.2)',
                 color: '#f87171',
                 border: '1px solid rgba(239,68,68,0.4)',
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
                 gap: '0.35rem',
                 fontSize: '0.75rem',
-                animation: 'pulse 1.2s ease-in-out infinite'
+                fontWeight: 700
               }}
             >
               <span
@@ -195,73 +296,148 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
                   height: 8,
                   borderRadius: '50%',
                   background: '#ef4444',
-                  display: 'inline-block'
+                  display: 'inline-block',
+                  animation: 'pulse 1s infinite'
                 }}
               />
               REC {remainingSeconds}s
             </span>
           )}
         </div>
+
         <button
+          id="btn-webcam-close"
           type="button"
-          onClick={onClose}
+          onClick={handleClose}
           style={{
             background: 'rgba(255,255,255,0.06)',
             border: '1px solid rgba(255,255,255,0.12)',
             color: 'var(--text-secondary)',
-            borderRadius: '6px',
-            padding: '0.3rem 0.65rem',
+            borderRadius: '8px',
+            padding: '0.4rem 0.75rem',
             cursor: 'pointer',
-            fontSize: '0.8rem'
+            fontSize: '0.8rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.35rem',
+            transition: 'background 0.2s ease'
           }}
         >
-          ✕ Close
+          <X size={14} />
+          <span>Close</span>
         </button>
       </div>
 
-      {/* Error state */}
+      {/* Error state alert */}
       {state === 'error' && (
         <div className="validation-error-alert" role="alert">
-          <AlertCircle size={20} style={{ flexShrink: 0 }} />
+          <AlertCircle size={20} style={{ flexShrink: 0, marginTop: '2px' }} />
           <div>
-            <h5>Camera Error</h5>
-            <p>{errorMsg}</p>
+            <h5 style={{ fontWeight: 700, margin: '0 0 0.2rem 0' }}>Camera Unavailable</h5>
+            <p style={{ margin: 0, fontSize: '0.85rem' }}>{errorMsg}</p>
           </div>
         </div>
       )}
 
-      {/* Video preview */}
-      {(state === 'preview' || state === 'recording' || state === 'done') && (
-        <div style={{ position: 'relative', borderRadius: '10px', overflow: 'hidden', background: '#000' }}>
-          <video
-            ref={videoRef}
+      {/* Video Container — Always present for immediate preview binding */}
+      <div
+        style={{
+          position: 'relative',
+          borderRadius: '12px',
+          overflow: 'hidden',
+          background: '#090d16',
+          border: '1px solid rgba(255,255,255,0.1)',
+          minHeight: '260px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        {/* Loading / Requesting overlay */}
+        {state === 'requesting' && (
+          <div
             style={{
-              width: '100%',
-              maxHeight: '280px',
-              objectFit: 'cover',
-              display: 'block',
-              transform: state !== 'done' ? 'scaleX(-1)' : 'none' /* mirror live feed */
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.75rem',
+              background: 'rgba(11, 15, 25, 0.9)',
+              zIndex: 2
             }}
-            playsInline
-          />
+          >
+            <div className="loading-spinner-ring" style={{ width: 32, height: 32, borderWidth: 3 }} />
+            <span style={{ fontSize: '0.875rem', color: '#cbd5e1', fontWeight: 500 }}>
+              Connecting to camera device…
+            </span>
+          </div>
+        )}
 
-          {/* Recording progress bar overlay */}
-          {state === 'recording' && (
-            <div
+        {/* Video Element for live preview & recorded playback */}
+        <video
+          ref={videoRef}
+          style={{
+            width: '100%',
+            maxHeight: '320px',
+            objectFit: 'cover',
+            display: state === 'idle' || state === 'error' ? 'none' : 'block',
+            transform: state !== 'done' ? 'scaleX(-1)' : 'none' /* Mirror live camera */
+          }}
+          playsInline
+          autoPlay
+          muted={state !== 'done'}
+        />
+
+        {/* Live overlay guide indicator */}
+        {(state === 'preview' || state === 'recording') && (
+          <div
+            style={{
+              position: 'absolute',
+              top: '12px',
+              left: '12px',
+              padding: '0.3rem 0.65rem',
+              background: 'rgba(0,0,0,0.65)',
+              borderRadius: '6px',
+              fontSize: '0.75rem',
+              color: '#34d399',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              border: '1px solid rgba(52, 211, 153, 0.3)',
+              pointerEvents: 'none'
+            }}
+          >
+            <span
               style={{
-                position: 'absolute',
-                bottom: 0,
-                left: 0,
-                height: '4px',
-                width: `${progressPercent}%`,
-                background: 'linear-gradient(90deg, #6366f1, #ef4444)',
-                transition: 'width 1s linear',
-                borderRadius: '0 2px 2px 0'
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: '#34d399',
+                display: 'inline-block'
               }}
             />
-          )}
-        </div>
-      )}
+            <span>Live Camera Feed (Continuous)</span>
+          </div>
+        )}
+
+        {/* Recording progress bar overlay */}
+        {state === 'recording' && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              height: '4px',
+              width: `${progressPercent}%`,
+              background: 'linear-gradient(90deg, #6366f1, #ef4444)',
+              transition: 'width 1s linear',
+              borderRadius: '0 2px 2px 0'
+            }}
+          />
+        )}
+      </div>
 
       {/* Done success banner */}
       {state === 'done' && (
@@ -270,7 +446,7 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
             display: 'flex',
             alignItems: 'center',
             gap: '0.6rem',
-            padding: '0.65rem 1rem',
+            padding: '0.75rem 1rem',
             background: 'rgba(16,185,129,0.12)',
             border: '1px solid rgba(16,185,129,0.3)',
             borderRadius: '8px',
@@ -278,13 +454,13 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
             color: 'var(--accent-emerald)'
           }}
         >
-          <CheckCircle2 size={18} />
-          <span>Recording complete ({elapsed}s). Preview above, then use or retake.</span>
+          <CheckCircle2 size={18} style={{ flexShrink: 0 }} />
+          <span>Gesture recorded ({elapsed}s). Review playback above, then proceed to recognition or retake.</span>
         </div>
       )}
 
-      {/* Action buttons */}
-      <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+      {/* Action buttons bar */}
+      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
         {state === 'idle' || state === 'error' ? (
           <button
             id="btn-webcam-start-camera"
@@ -294,12 +470,12 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
             style={{ flex: 1 }}
           >
             <Camera size={16} />
-            <span>Open Camera</span>
+            <span>Retry Camera Access</span>
           </button>
         ) : state === 'requesting' ? (
           <button type="button" className="btn btn-primary" disabled style={{ flex: 1 }}>
             <div className="loading-spinner-ring" style={{ width: 16, height: 16, borderWidth: 2 }} />
-            <span>Requesting Permission…</span>
+            <span>Initializing Camera…</span>
           </button>
         ) : state === 'preview' ? (
           <button
@@ -307,10 +483,10 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
             type="button"
             className="btn btn-primary"
             onClick={startRecording}
-            style={{ flex: 1, background: 'linear-gradient(135deg,#ef4444,#b91c1c)' }}
+            style={{ flex: 1, background: 'linear-gradient(135deg,#ef4444,#b91c1c)', borderColor: '#ef4444' }}
           >
             <Video size={16} />
-            <span>Start Recording (max {MAX_RECORD_SECONDS}s)</span>
+            <span>Start Recording Sign (Max {MAX_RECORD_SECONDS}s)</span>
           </button>
         ) : state === 'recording' ? (
           <button
@@ -318,10 +494,10 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
             type="button"
             className="btn btn-secondary"
             onClick={stopRecording}
-            style={{ flex: 1 }}
+            style={{ flex: 1, borderColor: '#ef4444', color: '#f87171' }}
           >
             <Square size={16} fill="currentColor" />
-            <span>Stop Recording</span>
+            <span>Stop Recording ({remainingSeconds}s remaining)</span>
           </button>
         ) : state === 'done' ? (
           <>
@@ -333,7 +509,7 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
               style={{ flex: 1 }}
             >
               <CheckCircle2 size={16} />
-              <span>Use This Recording</span>
+              <span>Use This Video for Inference</span>
             </button>
             <button
               id="btn-webcam-retake"
@@ -341,16 +517,15 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
               className="btn btn-secondary"
               onClick={handleRetake}
             >
-              <CameraOff size={16} />
+              <RotateCcw size={16} />
               <span>Retake</span>
             </button>
           </>
         ) : null}
       </div>
 
-      <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', margin: 0 }}>
-        Tip: Perform a clear ISL gesture in front of the camera. Recording is capped at {MAX_RECORD_SECONDS} seconds.
-        The video will be sent to MobileNetV2 inference just like an uploaded file.
+      <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', margin: 0, textAlign: 'center' }}>
+        Record a clear, centered ISL gesture. The video will be sampled to 33 frames and dispatched directly to your selected model.
       </p>
     </div>
   );

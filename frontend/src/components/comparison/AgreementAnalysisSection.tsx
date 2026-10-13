@@ -119,7 +119,7 @@ export const AgreementAnalysisSection = ({ analysis }: AgreementAnalysisSectionP
 
                   <td>
                     <span className="latency-badge">
-                      ~{pred.inferenceTimeMs} ms (Simulated)
+                      {pred.inferenceTimeMs} ms
                     </span>
                   </td>
 

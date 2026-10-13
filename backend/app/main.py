@@ -114,6 +114,27 @@ async def model_info(model: Optional[str] = Query(None)):
                 detail=f"Unknown model '{model}'. Supported options: {list(MODEL_REGISTRY.keys())}"
             )
         cfg = MODEL_REGISTRY[target_key]
+
+        if target_key == "late_fusion":
+            return {
+                "model_id": "late_fusion",
+                "name": cfg["name"],
+                "architecture": cfg["architecture"],
+                "tagline": cfg["tagline"],
+                "offline_test_accuracy": cfg["test_accuracy"],
+                "input_shape": [None, 33, 224, 224, 3],
+                "output_shape": [None, 76],
+                "num_classes": engine.num_classes or 76,
+                "preprocessing": {
+                    "sampling_frames": cfg["frame_count"],
+                    "target_resolution": "Multi-scale (224x224 & 112x112)",
+                    "color_space": cfg["color_space"],
+                    "normalization": cfg["normalization"],
+                    "input_scale": cfg["input_scale"],
+                    "aggregation": cfg["aggregation"]
+                }
+            }
+
         is_ready = engine.is_model_loaded(target_key)
         if not is_ready:
             try:
@@ -243,23 +264,17 @@ async def recognize_video(
                 detail="Uploaded video file is empty."
             )
 
-        # 5. Model-specific frame extraction & preprocessing
+        # 5. Model-specific frame extraction & inference
         try:
-            input_tensor = preprocess_for_model(
-                temp_path,
-                model_id=target_key,
-                num_frames=FRAMES_PER_VIDEO
-            )
-        except Exception as e:
-            logger.warning(f"Failed to decode video frames from {video.filename}: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Could not decode video file: {str(e)}"
-            )
-
-        # 6. Execute neural inference on selected model
-        try:
-            pred_result = engine.predict(input_tensor, model_id=target_key, top_k=5)
+            if target_key == "late_fusion":
+                pred_result = engine.predict_late_fusion(temp_path, top_k=5)
+            else:
+                input_tensor = preprocess_for_model(
+                    temp_path,
+                    model_id=target_key,
+                    num_frames=FRAMES_PER_VIDEO
+                )
+                pred_result = engine.predict(input_tensor, model_id=target_key, top_k=5)
         except Exception as e:
             logger.error(f"Inference error on {video.filename} with model {target_key}: {e}")
             raise HTTPException(
@@ -267,7 +282,7 @@ async def recognize_video(
                 detail=f"Neural inference error: {str(e)}"
             )
 
-        # 7. Format response matching frontend TypeScript schema
+        # 6. Format response matching frontend TypeScript schema
         meta = pred_result["model_metadata"]
         return {
             "success": True,
@@ -284,12 +299,159 @@ async def recognize_video(
             },
             "topK": pred_result["top_k"],
             "preprocessing": meta["preprocessing"],
-            "simulatedLatencyMs": pred_result["inference_time_ms"],
+            "inferenceTimeMs": pred_result["inference_time_ms"],
+            "simulatedLatencyMs": pred_result["inference_time_ms"],  # Backward-compatible alias
             "timestamp": datetime.now().strftime("%I:%M:%S %p")
         }
 
     finally:
         # Guarantee cleanup of temporary file on disk
+        if temp_path.exists():
+            try:
+                os.remove(temp_path)
+            except Exception as e:
+                logger.error(f"Error removing temporary file {temp_path}: {e}")
+
+
+@app.post("/api/v1/compare")
+async def compare_video_models(
+    video: UploadFile = File(...)
+):
+    """
+    Executes neural inference across all 3 trained ISL models (MobileNetV2, Custom CNN, CNN-LSTM)
+    on the exact same uploaded video sequence.
+    Returns individual model predictions, top-5 candidates, measured latencies, and consensus analysis.
+    """
+    # 1. Validate filename and extension
+    if not video.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No filename provided in upload."
+        )
+
+    ext = Path(video.filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported video format '{ext}'. Allowed formats: {sorted(list(ALLOWED_EXTENSIONS))}"
+        )
+
+    # 2. Ensure all 3 models are loaded
+    for m_id in ["mobilenetv2", "custom_cnn", "cnn_lstm"]:
+        if not engine.is_model_loaded(m_id):
+            try:
+                engine.load_model(m_id)
+            except Exception as e:
+                cfg = MODEL_REGISTRY[m_id]
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=f"Model '{cfg['name']}' is not available: {str(e)}"
+                )
+
+    # 3. Stream upload to a temporary file
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+    temp_path = Path(temp_file.name)
+    total_bytes = 0
+
+    try:
+        while True:
+            chunk = await video.read(1024 * 1024)
+            if not chunk:
+                break
+            total_bytes += len(chunk)
+            if total_bytes > MAX_FILE_SIZE_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"Uploaded file exceeds maximum limit of {MAX_FILE_SIZE_BYTES // (1024*1024)} MB."
+                )
+            temp_file.write(chunk)
+        temp_file.flush()
+        temp_file.close()
+
+        if total_bytes == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Uploaded video file is empty."
+            )
+
+        # 4. Preprocess and predict for each model
+        try:
+            t_mobile = preprocess_for_model(temp_path, model_id="mobilenetv2", num_frames=FRAMES_PER_VIDEO)
+            pred_mobile = engine.predict(t_mobile, model_id="mobilenetv2", top_k=5)
+
+            t_custom = preprocess_for_model(temp_path, model_id="custom_cnn", num_frames=FRAMES_PER_VIDEO)
+            pred_custom = engine.predict(t_custom, model_id="custom_cnn", top_k=5)
+
+            t_lstm = preprocess_for_model(temp_path, model_id="cnn_lstm", num_frames=FRAMES_PER_VIDEO)
+            pred_lstm = engine.predict(t_lstm, model_id="cnn_lstm", top_k=5)
+        except Exception as e:
+            logger.error(f"Inference error during model comparison on {video.filename}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Model comparison inference error: {str(e)}"
+            )
+
+        # 5. Calculate agreement and consensus
+        from collections import Counter
+        words = [
+            pred_mobile["predicted_word"],
+            pred_custom["predicted_word"],
+            pred_lstm["predicted_word"]
+        ]
+        word_counts = Counter(words)
+        majority_word, agreement_count = word_counts.most_common(1)[0]
+        all_agree = (agreement_count == 3)
+
+        return {
+            "videoName": video.filename,
+            "analyzedAt": datetime.now().strftime("%I:%M:%S %p"),
+            "isMockData": False,
+            "primaryPrediction": {
+                "modelId": "mobilenetv2",
+                "modelName": "MobileNetV2 (Frozen Backbone)",
+                "word": pred_mobile["predicted_word"],
+                "confidence": pred_mobile["confidence"]
+            },
+            "models": {
+                "mobilenetv2": {
+                    "modelId": "mobilenetv2",
+                    "modelName": "MobileNetV2 (Frozen Backbone)",
+                    "predictedWord": pred_mobile["predicted_word"],
+                    "confidence": pred_mobile["confidence"],
+                    "inferenceTimeMs": pred_mobile["inference_time_ms"],
+                    "isBestModelOverall": True,
+                    "status": "success",
+                    "topK": pred_mobile["top_k"]
+                },
+                "custom-cnn": {
+                    "modelId": "custom-cnn",
+                    "modelName": "Custom 2D CNN",
+                    "predictedWord": pred_custom["predicted_word"],
+                    "confidence": pred_custom["confidence"],
+                    "inferenceTimeMs": pred_custom["inference_time_ms"],
+                    "isBestModelOverall": False,
+                    "status": "success",
+                    "topK": pred_custom["top_k"]
+                },
+                "cnn-lstm": {
+                    "modelId": "cnn-lstm",
+                    "modelName": "CNN-LSTM",
+                    "predictedWord": pred_lstm["predicted_word"],
+                    "confidence": pred_lstm["confidence"],
+                    "inferenceTimeMs": pred_lstm["inference_time_ms"],
+                    "isBestModelOverall": False,
+                    "status": "success",
+                    "topK": pred_lstm["top_k"]
+                }
+            },
+            "agreementStatus": {
+                "allAgree": all_agree,
+                "majorityAgreedWord": majority_word,
+                "agreementCount": agreement_count
+            }
+        }
+
+    finally:
         if temp_path.exists():
             try:
                 os.remove(temp_path)

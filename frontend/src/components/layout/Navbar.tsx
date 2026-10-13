@@ -4,11 +4,11 @@ import type { NavigationTab } from '../../types';
 interface NavbarProps {
   currentTab: NavigationTab;
   onSelectTab: (tab: NavigationTab) => void;
-  isMockMode: boolean;
+  isMockMode?: boolean;
   backendConnected: boolean;
 }
 
-export const Navbar = ({ currentTab, onSelectTab, isMockMode, backendConnected }: NavbarProps) => {
+export const Navbar = ({ currentTab, onSelectTab, backendConnected }: NavbarProps) => {
   return (
     <header className="navbar" role="banner">
       <div className="navbar-inner">
@@ -72,19 +72,19 @@ export const Navbar = ({ currentTab, onSelectTab, isMockMode, backendConnected }
             <div
               id="badge-backend-status"
               className="badge badge-success"
-              title="Connected to live Python FastAPI MobileNetV2 backend (Port 8000)"
+              title="Connected to live Python FastAPI multi-model backend (Port 8000)"
             >
               <CheckCircle2 size={12} />
-              <span>MobileNetV2 Live</span>
+              <span>Neural Engine Live</span>
             </div>
           ) : (
             <div
               id="badge-backend-status"
               className="badge badge-amber"
-              title={isMockMode ? "Mock Mode Active: FastAPI backend is offline. Run backend server on port 8000 for real MobileNetV2 inference." : "FastAPI backend is offline."}
+              title="FastAPI backend is offline. Start the backend with: cd backend && venv\Scripts\python -m uvicorn app.main:app --port 8000"
             >
               <WifiOff size={12} />
-              <span>{isMockMode ? 'Mock Mode' : 'Backend Offline'}</span>
+              <span>Backend Offline</span>
             </div>
           )}
         </div>

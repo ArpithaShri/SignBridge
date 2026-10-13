@@ -2,7 +2,7 @@ import json
 import time
 import logging
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 import numpy as np
 
 from app.config import (
@@ -20,6 +20,7 @@ class MultiModelInferenceEngine:
     - MobileNetV2 (Frozen Backbone) [Default]
     - Custom 2D CNN (Baseline)
     - CNN-LSTM Spatio-Temporal Model
+    - Late Fusion Ensemble (Optional Equal-Weight Average)
 
     Loads Keras models and the verified 76-class mapping into memory once and caches them.
     Never reloads weights on every request.
@@ -59,6 +60,12 @@ class MultiModelInferenceEngine:
                 f"Allowed options: {list(MODEL_REGISTRY.keys())}"
             )
 
+        if target_key == "late_fusion":
+            # Late fusion requires all 3 base models
+            for base_id in ["mobilenetv2", "custom_cnn", "cnn_lstm"]:
+                self.load_model(base_id)
+            return self.models
+
         if target_key in self.models:
             return self.models[target_key]
 
@@ -66,7 +73,7 @@ class MultiModelInferenceEngine:
         model_file = cfg["model_file"]
         mapping_file = cfg["mapping_file"]
 
-        if not model_file.exists():
+        if not model_file or not model_file.exists():
             raise FileNotFoundError(
                 f"Trained model artifact for '{cfg['name']}' not found at: {model_file}."
             )
@@ -87,9 +94,9 @@ class MultiModelInferenceEngine:
         return loaded_model
 
     def load_all(self) -> Dict[str, bool]:
-        """Attempts to load all registered models, reporting load status per model."""
+        """Attempts to load all registered base models, reporting load status per model."""
         statuses = {}
-        for key in MODEL_REGISTRY:
+        for key in ["mobilenetv2", "custom_cnn", "cnn_lstm"]:
             try:
                 self.load_model(key)
                 statuses[key] = True
@@ -100,6 +107,8 @@ class MultiModelInferenceEngine:
 
     def is_model_loaded(self, model_id: str) -> bool:
         target_key = normalize_model_id(model_id)
+        if target_key == "late_fusion":
+            return all(k in self.models for k in ["mobilenetv2", "custom_cnn", "cnn_lstm"])
         return target_key in self.models
 
     def get_loaded_models(self) -> List[str]:
@@ -118,6 +127,51 @@ class MultiModelInferenceEngine:
         """Backwards compatible startup load call for MobileNetV2."""
         self.load_model(DEFAULT_MODEL_ID)
 
+    def predict_probabilities(
+        self,
+        frames_or_seq: np.ndarray,
+        model_id: str = DEFAULT_MODEL_ID
+    ) -> np.ndarray:
+        """
+        Runs neural inference using the specified model and returns the normalized
+        76-class probability distribution:
+        - mobilenetv2: averages 33 frame-level probabilities
+        - custom_cnn:  averages 33 frame-level probabilities
+        - cnn_lstm:    uses sequence-level probability output directly
+        """
+        target_key = normalize_model_id(model_id)
+        if target_key not in MODEL_REGISTRY:
+            raise ValueError(
+                f"Unknown model identifier '{model_id}'. "
+                f"Allowed options: {list(MODEL_REGISTRY.keys())}"
+            )
+
+        if not self.is_model_loaded(target_key):
+            self.load_model(target_key)
+
+        model_instance = self.models[target_key]
+
+        if target_key == "cnn_lstm":
+            if frames_or_seq.ndim != 5:
+                raise ValueError(
+                    f"CNN-LSTM requires a 5D sequence tensor (1, 33, 112, 112, 3), got shape {frames_or_seq.shape}"
+                )
+            preds = model_instance.predict(frames_or_seq, verbose=0)
+            video_probs = np.asarray(preds[0], dtype=np.float32)
+        else:
+            if frames_or_seq.ndim != 4:
+                raise ValueError(
+                    f"Frame-level models require a 4D tensor (N, 224, 224, 3), got shape {frames_or_seq.shape}"
+                )
+            frame_probs = model_instance.predict(frames_or_seq, batch_size=33, verbose=0)
+            video_probs = np.asarray(frame_probs.mean(axis=0), dtype=np.float32)
+
+        prob_sum = float(video_probs.sum())
+        if prob_sum > 0:
+            video_probs = video_probs / prob_sum
+
+        return video_probs
+
     def predict(
         self,
         frames_or_seq: np.ndarray,
@@ -125,7 +179,7 @@ class MultiModelInferenceEngine:
         top_k: int = 5
     ) -> Dict[str, Any]:
         """
-        Runs neural inference using the specified model:
+        Runs neural inference on the specified model:
         - mobilenetv2: 4D tensor (33, 224, 224, 3) in [0, 255] -> mean frame probability vector.
         - custom_cnn:  4D tensor (33, 224, 224, 3) in [0, 1]   -> mean frame probability vector.
         - cnn_lstm:    5D tensor (1, 33, 112, 112, 3) in [0, 1]-> single sequence probability vector.
@@ -137,39 +191,11 @@ class MultiModelInferenceEngine:
                 f"Allowed options: {list(MODEL_REGISTRY.keys())}"
             )
 
-        if not self.is_model_loaded(target_key):
-            # Attempt lazy load
-            self.load_model(target_key)
-
-        model_instance = self.models[target_key]
         cfg = MODEL_REGISTRY[target_key]
+        frames_count = frames_or_seq.shape[1] if target_key == "cnn_lstm" else frames_or_seq.shape[0]
 
         t0 = time.perf_counter()
-
-        if target_key == "cnn_lstm":
-            # 5D input: (batch=1, 33, 112, 112, 3)
-            if frames_or_seq.ndim != 5:
-                raise ValueError(
-                    f"CNN-LSTM requires a 5D sequence tensor (1, 33, 112, 112, 3), got shape {frames_or_seq.shape}"
-                )
-            preds = model_instance.predict(frames_or_seq, verbose=0)
-            video_probs = preds[0]
-            frames_count = frames_or_seq.shape[1]
-        else:
-            # 4D input: (33, 224, 224, 3)
-            if frames_or_seq.ndim != 4:
-                raise ValueError(
-                    f"Frame-level models require a 4D tensor (N, 224, 224, 3), got shape {frames_or_seq.shape}"
-                )
-            frame_probs = model_instance.predict(frames_or_seq, batch_size=33, verbose=0)
-            video_probs = frame_probs.mean(axis=0)
-            frames_count = frames_or_seq.shape[0]
-
-        # Normalize probability vector
-        prob_sum = float(video_probs.sum())
-        if prob_sum > 0:
-            video_probs = video_probs / prob_sum
-
+        video_probs = self.predict_probabilities(frames_or_seq, model_id=target_key)
         inference_time_ms = round((time.perf_counter() - t0) * 1000, 2)
 
         top_idx = int(np.argmax(video_probs))
@@ -201,6 +227,76 @@ class MultiModelInferenceEngine:
                 "preprocessing": {
                     "framesSampled": cfg["frame_count"],
                     "frameResolution": f"{cfg['image_size']} × {cfg['image_size']}",
+                    "colorSpace": cfg["color_space"],
+                    "normalization": cfg["normalization"],
+                    "aggregation": cfg["aggregation"]
+                }
+            }
+        }
+
+    def predict_late_fusion(
+        self,
+        video_path: Union[str, Path],
+        top_k: int = 5
+    ) -> Dict[str, Any]:
+        """
+        Executes equal-weight late fusion probability averaging across all 3 trained models:
+        (P_mobilenet + P_custom + P_lstm) / 3.0.
+        Does not retrain or alter any model weights; MobileNetV2 remains the default standalone model.
+        """
+        from app.preprocessing import preprocess_for_model
+        t0 = time.perf_counter()
+
+        t_mobile = preprocess_for_model(video_path, model_id="mobilenetv2")
+        probs_mobile = self.predict_probabilities(t_mobile, model_id="mobilenetv2")
+
+        t_custom = preprocess_for_model(video_path, model_id="custom_cnn")
+        probs_custom = self.predict_probabilities(t_custom, model_id="custom_cnn")
+
+        t_lstm = preprocess_for_model(video_path, model_id="cnn_lstm")
+        probs_lstm = self.predict_probabilities(t_lstm, model_id="cnn_lstm")
+
+        fusion_probs = (probs_mobile + probs_custom + probs_lstm) / 3.0
+        prob_sum = float(fusion_probs.sum())
+        if prob_sum > 0:
+            fusion_probs = fusion_probs / prob_sum
+
+        inference_time_ms = round((time.perf_counter() - t0) * 1000, 2)
+
+        top_idx = int(np.argmax(fusion_probs))
+        predicted_word = self.idx_to_class[top_idx].upper()
+        confidence = float(fusion_probs[top_idx])
+
+        sorted_indices = np.argsort(fusion_probs)[::-1][:top_k]
+        top_k_candidates = [
+            {
+                "word": self.idx_to_class[int(idx)].upper(),
+                "confidence": round(float(fusion_probs[idx]), 4)
+            }
+            for idx in sorted_indices
+        ]
+
+        cfg = MODEL_REGISTRY["late_fusion"]
+        return {
+            "predicted_word": predicted_word,
+            "confidence": round(confidence, 4),
+            "top_k": top_k_candidates,
+            "inference_time_ms": inference_time_ms,
+            "frames_evaluated": 33,
+            "branch_predictions": {
+                "mobilenetv2": self.idx_to_class[int(np.argmax(probs_mobile))].upper(),
+                "custom_cnn": self.idx_to_class[int(np.argmax(probs_custom))].upper(),
+                "cnn_lstm": self.idx_to_class[int(np.argmax(probs_lstm))].upper()
+            },
+            "model_metadata": {
+                "id": cfg["id"],
+                "name": cfg["name"],
+                "testAccuracy": cfg["test_accuracy"],
+                "architecture": cfg["architecture"],
+                "tagline": cfg["tagline"],
+                "preprocessing": {
+                    "framesSampled": cfg["frame_count"],
+                    "frameResolution": "Multi-scale (224 & 112)",
                     "colorSpace": cfg["color_space"],
                     "normalization": cfg["normalization"],
                     "aggregation": cfg["aggregation"]

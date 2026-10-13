@@ -65,9 +65,9 @@ export const ModelComparisonCard = ({
               </span>
               <div className="comparison-pred-word">{prediction.predictedWord}</div>
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: '0.4rem' }}>
-                <span className="latency-badge" title="Simulated processing time for mock testing">
+                <span className="latency-badge" title="Measured neural inference latency">
                   <Clock size={12} />
-                  <span>~{prediction.inferenceTimeMs} ms (Simulated)</span>
+                  <span>{prediction.inferenceTimeMs} ms latency</span>
                 </span>
               </div>
             </>

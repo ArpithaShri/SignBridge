@@ -82,6 +82,7 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [videoDuration, setVideoDuration] = useState<number | undefined>(undefined);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string>('mobilenetv2');
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<VideoRecognitionResponse | null>(null);
@@ -133,12 +134,12 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
     try {
       const response = await analyzeVideo({
         videoFile: selectedFile,
-        targetModel: 'mobilenetv2',
+        targetModel: selectedModel,
         samplingFrames: 33
       });
       setAnalysisResult(response);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'An error occurred during inference simulation';
+      const msg = err instanceof Error ? err.message : 'An error occurred during inference';
       setAnalysisError(msg);
     } finally {
       setIsAnalyzing(false);
@@ -164,6 +165,17 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
   };
 
   const handleLoadSampleVideo = async (filename: string, wordLabel: string) => {
+    try {
+      const res = await fetch('/samples/isl_sample_video.mp4');
+      if (res.ok) {
+        const blob = await res.blob();
+        const file = new File([blob], filename, { type: 'video/mp4', lastModified: Date.now() });
+        handleFileSelected(file);
+        return;
+      }
+    } catch {
+      // fallback to in-memory video generator if static fetch fails
+    }
     const sampleFile = await createSyntheticVideoFile(filename, wordLabel);
     handleFileSelected(sampleFile);
   };
@@ -352,6 +364,76 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
                 />
               )}
 
+              {/* Model Selection Selector */}
+              <div
+                className="glass-card"
+                style={{
+                  padding: '1rem 1.15rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.6rem',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '12px',
+                  background: 'rgba(255, 255, 255, 0.02)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <label
+                    htmlFor="model-selector"
+                    style={{
+                      fontSize: '0.825rem',
+                      fontWeight: 700,
+                      color: '#fff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      margin: 0
+                    }}
+                  >
+                    <span>Target Model Architecture:</span>
+                  </label>
+                  <span
+                    className="badge badge-brand"
+                    style={{ fontSize: '0.725rem' }}
+                  >
+                    {selectedModel === 'mobilenetv2' ? '67.78% Test Acc (Default)' :
+                     selectedModel === 'custom_cnn' ? '5.00% Baseline Acc' :
+                     selectedModel === 'cnn_lstm' ? '4.44% Spatio-Temporal Acc' : 'Equal-Weight Late Fusion'}
+                  </span>
+                </div>
+
+                <select
+                  id="model-selector"
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  disabled={isAnalyzing}
+                  style={{
+                    width: '100%',
+                    padding: '0.6rem 0.85rem',
+                    borderRadius: '8px',
+                    background: 'rgba(15, 23, 42, 0.85)',
+                    border: '1.5px solid rgba(99, 102, 241, 0.4)',
+                    color: '#fff',
+                    fontSize: '0.875rem',
+                    fontWeight: 500,
+                    outline: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="mobilenetv2">MobileNetV2 (Frozen Backbone) — 67.78% Acc [Default]</option>
+                  <option value="custom_cnn">Custom 2D CNN (Baseline) — 5.00% Acc</option>
+                  <option value="cnn_lstm">CNN-LSTM Spatio-Temporal Model — 4.44% Acc</option>
+                  <option value="late_fusion">Tri-Model Late Fusion Ensemble (Equal-Weight Average)</option>
+                </select>
+
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', lineHeight: 1.4 }}>
+                  {selectedModel === 'mobilenetv2' && '• 33 sampled frames @ 224×224 RGB [0, 255] -> mean frame probabilities'}
+                  {selectedModel === 'custom_cnn' && '• 33 sampled frames @ 224×224 RGB normalized [0, 1] -> mean frame probabilities'}
+                  {selectedModel === 'cnn_lstm' && '• 33 sampled frames @ 112×112 RGB normalized [0, 1] -> 5D sequence tensor -> LSTM'}
+                  {selectedModel === 'late_fusion' && '• Multi-branch evaluation: (P_mobilenet + P_custom + P_lstm) / 3.0 probability average'}
+                </div>
+              </div>
+
               {/* Action Controls Bar */}
               <div className="recognition-controls-bar">
                 <button
@@ -365,12 +447,12 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
                   {isAnalyzing ? (
                     <>
                       <div className="loading-spinner-ring" style={{ width: '18px', height: '18px', borderWidth: '2px' }} />
-                      <span>Analyzing 33 Frames...</span>
+                      <span>Running Neural Inference...</span>
                     </>
                   ) : (
                     <>
                       <Play size={18} fill="currentColor" />
-                      <span>Analyze Video</span>
+                      <span>Analyze Video with {selectedModel === 'mobilenetv2' ? 'MobileNetV2' : selectedModel === 'custom_cnn' ? 'Custom CNN' : selectedModel === 'cnn_lstm' ? 'CNN-LSTM' : 'Late Fusion'}</span>
                     </>
                   )}
                 </button>
@@ -399,8 +481,13 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
                 Processing Video Frames
               </h4>
               <p style={{ maxWidth: '360px', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                Uniformly extracting 33 temporal frames, standardizing spatial resolution to 224×224 RGB,
-                and running MobileNetV2 forward pass.
+                {selectedModel === 'cnn_lstm'
+                  ? 'Extracting 33 temporal frames, standardizing spatial resolution to 112×112 RGB, and feeding 5D sequence to LSTM.'
+                  : selectedModel === 'custom_cnn'
+                  ? 'Extracting 33 temporal frames, standardizing to 224×224 RGB [0, 1], and averaging Custom CNN predictions.'
+                  : selectedModel === 'late_fusion'
+                  ? 'Pre-processing 33 frames across all 3 architectures and calculating equal-weight probability average.'
+                  : 'Extracting 33 temporal frames, standardizing spatial resolution to 224×224 RGB, and running MobileNetV2 forward pass.'}
               </p>
 
               <div className="loading-progress-bar-container">
@@ -408,7 +495,7 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
               </div>
 
               <div className="loading-step-ticker">
-                Uniform Sampling: 33 frames | Scale: [0, 1] | Model: MobileNetV2
+                33 Frames | Model: {selectedModel.toUpperCase()} | 76 ISL Classes
               </div>
             </div>
           ) : analysisResult ? (

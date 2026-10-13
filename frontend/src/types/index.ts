@@ -78,7 +78,7 @@ export interface ISLClassInfo {
 
 export interface VideoRecognitionRequest {
   videoFile: File;
-  targetModel?: 'mobilenetv2' | 'custom-cnn' | 'cnn-lstm';
+  targetModel?: 'mobilenetv2' | 'custom-cnn' | 'custom_cnn' | 'cnn-lstm' | 'cnn_lstm' | 'late_fusion' | string;
   samplingFrames?: number; // default: 33
 }
 
@@ -101,6 +101,7 @@ export interface VideoRecognitionResponse {
     colorSpace: string;
     normalization: string;
   };
+  inferenceTimeMs?: number;
   simulatedLatencyMs?: number;
   timestamp: string;
   error?: string;
