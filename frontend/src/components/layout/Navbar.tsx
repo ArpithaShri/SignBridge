@@ -1,4 +1,4 @@
-import { Layers, Video, BarChart3, Sparkles, CheckCircle2, WifiOff } from 'lucide-react';
+import { Layers, Video, BarChart3, Sparkles, CheckCircle2, WifiOff, FlaskConical } from 'lucide-react';
 import type { NavigationTab } from '../../types';
 
 interface NavbarProps {
@@ -64,6 +64,17 @@ export const Navbar = ({ currentTab, onSelectTab, backendConnected }: NavbarProp
           >
             <BarChart3 size={16} />
             <span>Model Comparison</span>
+          </button>
+
+          <button
+            id="nav-tab-lab-eval2"
+            type="button"
+            className={`nav-tab-button ${currentTab === 'lab-eval2' ? 'active' : ''}`}
+            onClick={() => onSelectTab('lab-eval2')}
+            aria-selected={currentTab === 'lab-eval2'}
+          >
+            <FlaskConical size={16} />
+            <span>Lab Evaluation 2 — GAN + CNN</span>
           </button>
         </nav>
 

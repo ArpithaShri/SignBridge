@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Video, Square, Camera, AlertCircle, CheckCircle2, RotateCcw, X } from 'lucide-react';
+import { Video, Square, Camera, AlertCircle, CheckCircle2, RotateCcw, X, RefreshCw, AlertTriangle } from 'lucide-react';
 
 interface WebcamRecorderProps {
   onRecordingComplete: (file: File) => void;
@@ -16,6 +16,10 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
   const [elapsed, setElapsed] = useState(0);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [recordedUrl, setRecordedUrl] = useState<string | null>(null);
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+  const [isCameraMuted, setIsCameraMuted] = useState(false);
+  const [activeResolution, setActiveResolution] = useState<string>('');
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -45,46 +49,105 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
     };
   }, [stopStream, recordedUrl]);
 
-  // Synchronize stream with video element whenever state transitions to preview or recording
-  useEffect(() => {
-    if ((state === 'preview' || state === 'recording') && videoRef.current && streamRef.current) {
-      if (videoRef.current.srcObject !== streamRef.current) {
-        videoRef.current.srcObject = streamRef.current;
+  // Enumerate camera devices
+  const updateDeviceList = useCallback(async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+      const allDevices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = allDevices.filter((d) => d.kind === 'videoinput');
+      setDevices(videoInputs);
+      if (videoInputs.length > 0 && !selectedDeviceId) {
+        setSelectedDeviceId(videoInputs[0].deviceId);
       }
-      videoRef.current.muted = true;
-      videoRef.current.play().catch((err) => {
-        console.warn('Video preview play notification:', err);
-      });
+    } catch (e) {
+      console.warn('Could not enumerate video devices:', e);
     }
-  }, [state]);
+  }, [selectedDeviceId]);
 
-  const startCamera = useCallback(async () => {
+  const startCamera = useCallback(async (deviceIdToUse?: string) => {
     setState('requesting');
     setErrorMsg(null);
+    setIsCameraMuted(false);
+
+    // Stop existing stream if switching devices
+    stopStream();
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Webcam media capture is not supported in this browser.');
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          facingMode: 'user'
-        },
+      const targetId = deviceIdToUse || selectedDeviceId;
+
+      // Primary constraints: try requested device or facingMode user with standard resolutions
+      const constraints: MediaStreamConstraints = {
+        video: targetId
+          ? {
+              deviceId: { exact: targetId },
+              width: { ideal: 1280, min: 480 },
+              height: { ideal: 720, min: 360 }
+            }
+          : {
+              facingMode: 'user',
+              width: { ideal: 1280, min: 480 },
+              height: { ideal: 720, min: 360 }
+            },
         audio: false
-      });
+      };
+
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch {
+        // Fallback to minimal video constraints if ideal resolutions failed
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: targetId ? { deviceId: { exact: targetId } } : true,
+          audio: false
+        });
+      }
 
       streamRef.current = stream;
 
+      // Track mute listeners (catches hardware privacy shutters or OS camera mute)
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = true;
+        if (videoTrack.muted) {
+          setIsCameraMuted(true);
+        }
+        videoTrack.onmute = () => setIsCameraMuted(true);
+        videoTrack.onunmute = () => setIsCameraMuted(false);
+
+        const settings = videoTrack.getSettings();
+        if (settings.width && settings.height) {
+          setActiveResolution(`${settings.width}×${settings.height}`);
+        }
+      }
+
+      // Bind directly to the video element
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.defaultMuted = true;
         videoRef.current.muted = true;
+        videoRef.current.playsInline = true;
+
+        videoRef.current.onloadedmetadata = () => {
+          if (videoRef.current) {
+            videoRef.current.play().catch((err) => {
+              console.warn('Video preview play rejected:', err);
+            });
+            if (videoRef.current.videoWidth && videoRef.current.videoHeight) {
+              setActiveResolution(`${videoRef.current.videoWidth}×${videoRef.current.videoHeight}`);
+            }
+          }
+        };
+
         await videoRef.current.play().catch(() => {});
       }
 
       setState('preview');
+      // Refresh device list to populate camera device labels
+      await updateDeviceList();
     } catch (err: unknown) {
       let msg = 'Could not access camera device.';
       if (err instanceof DOMException) {
@@ -93,7 +156,9 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
         } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
           msg = 'No camera device found. Please connect a webcam or enable your device camera.';
         } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-          msg = 'Camera is currently in use by another program or browser tab.';
+          msg = 'Camera is currently in use by another program (e.g. Zoom, Teams) or blocked by Windows privacy settings.';
+        } else if (err.name === 'OverconstrainedError') {
+          msg = 'The requested camera resolution is not supported by this device.';
         } else {
           msg = `Camera error (${err.name}): ${err.message}`;
         }
@@ -104,12 +169,18 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
       setErrorMsg(msg);
       setState('error');
     }
-  }, []);
+  }, [selectedDeviceId, stopStream, updateDeviceList]);
 
-  // Automatically request camera when recorder opens
+  // Request camera when recorder mounts
   useEffect(() => {
     startCamera();
   }, [startCamera]);
+
+  // Handle switching camera device
+  const handleDeviceChange = (deviceId: string) => {
+    setSelectedDeviceId(deviceId);
+    startCamera(deviceId);
+  };
 
   const startRecording = () => {
     if (!streamRef.current) return;
@@ -123,7 +194,7 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
     }
 
     // Determine highest quality supported mime type
-    let mimeType = 'video/webm';
+    let mimeType = 'video/webm;codecs=vp8';
     if (MediaRecorder.isTypeSupported('video/mp4')) {
       mimeType = 'video/mp4';
     } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
@@ -162,6 +233,11 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
       recorder.start(100); // 100ms chunk frequency for smooth buffering
       setState('recording');
 
+      // Ensure preview remains playing during recording
+      if (videoRef.current) {
+        videoRef.current.play().catch(() => {});
+      }
+
       timerRef.current = setInterval(() => {
         setElapsed((prev) => {
           const next = prev + 1;
@@ -189,7 +265,6 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
         // ignore recorder stop errors
       }
     }
-    stopStream();
   };
 
   const handleUseRecording = () => {
@@ -242,22 +317,22 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
         display: 'flex',
         flexDirection: 'column',
         gap: '1rem',
-        padding: '1.5rem',
+        padding: '1.25rem 1.5rem',
         border: '1.5px solid rgba(99,102,241,0.4)',
-        background: 'rgba(15, 23, 42, 0.85)',
+        background: 'rgba(15, 23, 42, 0.92)',
         backdropFilter: 'blur(16px)',
         borderRadius: '16px',
         position: 'relative',
         boxShadow: '0 12px 36px rgba(0,0,0,0.45)'
       }}
     >
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {/* Header with Camera Selector and Controls */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
           <div
             style={{
-              width: 32,
-              height: 32,
+              width: 34,
+              height: 34,
               borderRadius: '8px',
               background: 'rgba(99,102,241,0.2)',
               display: 'flex',
@@ -273,7 +348,7 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
               Live Camera Gesture Recorder
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-              Uniform 33-frame extraction applied on completion
+              Frame yourself in center • 33 uniform frames sampled on completion
             </div>
           </div>
           {state === 'recording' && (
@@ -305,28 +380,101 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
           )}
         </div>
 
-        <button
-          id="btn-webcam-close"
-          type="button"
-          onClick={handleClose}
+        {/* Device Selection & Actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+          {devices.length > 1 && (
+            <select
+              value={selectedDeviceId}
+              onChange={(e) => handleDeviceChange(e.target.value)}
+              disabled={state === 'recording'}
+              style={{
+                background: 'rgba(15, 23, 42, 0.95)',
+                border: '1px solid rgba(99,102,241,0.4)',
+                borderRadius: '8px',
+                color: '#fff',
+                padding: '0.35rem 0.65rem',
+                fontSize: '0.775rem',
+                maxWidth: '220px',
+                cursor: 'pointer'
+              }}
+              title="Switch camera device"
+            >
+              {devices.map((d, idx) => (
+                <option key={d.deviceId || idx} value={d.deviceId}>
+                  {d.label || `Camera ${idx + 1}`}
+                </option>
+              ))}
+            </select>
+          )}
+
+          <button
+            type="button"
+            onClick={() => startCamera()}
+            title="Refresh camera stream"
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              color: 'var(--text-secondary)',
+              borderRadius: '8px',
+              padding: '0.35rem 0.65rem',
+              cursor: 'pointer',
+              fontSize: '0.775rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.3rem'
+            }}
+          >
+            <RefreshCw size={13} />
+            <span>Reload</span>
+          </button>
+
+          <button
+            id="btn-webcam-close"
+            type="button"
+            onClick={handleClose}
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              color: 'var(--text-secondary)',
+              borderRadius: '8px',
+              padding: '0.35rem 0.65rem',
+              cursor: 'pointer',
+              fontSize: '0.775rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.3rem'
+            }}
+          >
+            <X size={14} />
+            <span>Close</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Shutter / Privacy Warning Banner */}
+      {isCameraMuted && state !== 'error' && (
+        <div
           style={{
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            color: 'var(--text-secondary)',
-            borderRadius: '8px',
-            padding: '0.4rem 0.75rem',
-            cursor: 'pointer',
-            fontSize: '0.8rem',
+            padding: '0.75rem 1rem',
+            background: 'rgba(245, 158, 11, 0.15)',
+            border: '1px solid rgba(245, 158, 11, 0.4)',
+            borderRadius: '10px',
+            color: '#fef3c7',
+            fontSize: '0.825rem',
             display: 'flex',
-            alignItems: 'center',
-            gap: '0.35rem',
-            transition: 'background 0.2s ease'
+            alignItems: 'flex-start',
+            gap: '0.65rem'
           }}
         >
-          <X size={14} />
-          <span>Close</span>
-        </button>
-      </div>
+          <AlertTriangle size={18} style={{ color: '#fbbf24', flexShrink: 0, marginTop: '2px' }} />
+          <div>
+            <strong>Webcam sensor is muted / privacy shutter is closed:</strong>
+            <p style={{ margin: '0.2rem 0 0 0', color: '#fde68a', fontSize: '0.775rem' }}>
+              Your laptop’s physical camera privacy slider is covering the lens, or your camera toggle key (e.g. F8 / F10 / Fn+F6) or Windows Camera Privacy is off. Open the lens slider to see your video feed.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Error state alert */}
       {state === 'error' && (
@@ -339,18 +487,21 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
         </div>
       )}
 
-      {/* Video Container — Always present for immediate preview binding */}
+      {/* Video Viewport Container */}
       <div
         style={{
           position: 'relative',
           borderRadius: '12px',
           overflow: 'hidden',
-          background: '#090d16',
-          border: '1px solid rgba(255,255,255,0.1)',
-          minHeight: '260px',
+          background: '#040711',
+          border: state === 'recording' ? '2px solid #ef4444' : '1px solid rgba(255,255,255,0.12)',
+          boxShadow: state === 'recording' ? '0 0 24px rgba(239,68,68,0.35)' : 'none',
+          minHeight: '300px',
+          height: '340px',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center'
+          justifyContent: 'center',
+          transition: 'border 0.3s ease, box-shadow 0.3s ease'
         }}
       >
         {/* Loading / Requesting overlay */}
@@ -368,9 +519,9 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
               zIndex: 2
             }}
           >
-            <div className="loading-spinner-ring" style={{ width: 32, height: 32, borderWidth: 3 }} />
+            <div className="loading-spinner-ring" style={{ width: 34, height: 34, borderWidth: 3 }} />
             <span style={{ fontSize: '0.875rem', color: '#cbd5e1', fontWeight: 500 }}>
-              Connecting to camera device…
+              Connecting to camera feed…
             </span>
           </div>
         )}
@@ -380,15 +531,46 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
           ref={videoRef}
           style={{
             width: '100%',
-            maxHeight: '320px',
-            objectFit: 'cover',
+            height: '100%',
+            objectFit: 'contain',
+            backgroundColor: '#000',
             display: state === 'idle' || state === 'error' ? 'none' : 'block',
             transform: state !== 'done' ? 'scaleX(-1)' : 'none' /* Mirror live camera */
           }}
           playsInline
           autoPlay
-          muted={state !== 'done'}
+          muted
         />
+
+        {/* Gesture Center Framing Target (visible in preview to guide user) */}
+        {state === 'preview' && !isCameraMuted && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: '20px',
+              border: '1.5px dashed rgba(99, 102, 241, 0.35)',
+              borderRadius: '12px',
+              pointerEvents: 'none',
+              display: 'flex',
+              alignItems: 'flex-start',
+              justifyContent: 'center',
+              paddingTop: '8px'
+            }}
+          >
+            <span
+              style={{
+                fontSize: '0.7rem',
+                background: 'rgba(15, 23, 42, 0.75)',
+                color: 'rgba(255,255,255,0.7)',
+                padding: '0.2rem 0.5rem',
+                borderRadius: '4px',
+                border: '1px solid rgba(255,255,255,0.1)'
+              }}
+            >
+              Position Hands and Upper Body Inside Frame
+            </span>
+          </div>
+        )}
 
         {/* Live overlay guide indicator */}
         {(state === 'preview' || state === 'recording') && (
@@ -398,27 +580,34 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
               top: '12px',
               left: '12px',
               padding: '0.3rem 0.65rem',
-              background: 'rgba(0,0,0,0.65)',
+              background: 'rgba(0,0,0,0.75)',
+              backdropFilter: 'blur(4px)',
               borderRadius: '6px',
               fontSize: '0.75rem',
-              color: '#34d399',
+              color: state === 'recording' ? '#f87171' : '#34d399',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.4rem',
-              border: '1px solid rgba(52, 211, 153, 0.3)',
+              gap: '0.45rem',
+              border: `1px solid ${state === 'recording' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(52, 211, 153, 0.3)'}`,
               pointerEvents: 'none'
             }}
           >
             <span
               style={{
-                width: 6,
-                height: 6,
+                width: 7,
+                height: 7,
                 borderRadius: '50%',
-                background: '#34d399',
-                display: 'inline-block'
+                background: state === 'recording' ? '#ef4444' : '#34d399',
+                display: 'inline-block',
+                animation: state === 'recording' ? 'pulse 1s infinite' : 'none'
               }}
             />
-            <span>Live Camera Feed (Continuous)</span>
+            <span style={{ fontWeight: 600 }}>
+              {state === 'recording' ? 'Recording Gesture...' : 'Live Camera Active'}
+            </span>
+            {activeResolution && (
+              <span style={{ opacity: 0.65, fontSize: '0.7rem' }}>• {activeResolution}</span>
+            )}
           </div>
         )}
 
@@ -429,7 +618,7 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
               position: 'absolute',
               bottom: 0,
               left: 0,
-              height: '4px',
+              height: '5px',
               width: `${progressPercent}%`,
               background: 'linear-gradient(90deg, #6366f1, #ef4444)',
               transition: 'width 1s linear',
@@ -466,7 +655,7 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
             id="btn-webcam-start-camera"
             type="button"
             className="btn btn-primary"
-            onClick={startCamera}
+            onClick={() => startCamera()}
             style={{ flex: 1 }}
           >
             <Camera size={16} />

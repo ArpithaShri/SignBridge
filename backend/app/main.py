@@ -23,6 +23,7 @@ from app.config import (
 )
 from app.preprocessing import preprocess_for_model
 from app.inference import engine
+from app.lab_eval2.router import router as lab_eval2_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,6 +41,14 @@ async def lifespan(app: FastAPI):
         logger.info(f"Model initialization statuses: {load_statuses}")
     except Exception as e:
         logger.error(f"Error initializing models at startup: {e}")
+
+    try:
+        from app.lab_eval2.inference import lab_eval2_engine
+        eval2_statuses = lab_eval2_engine.load_models()
+        logger.info(f"LabEval2 model initialization statuses: {eval2_statuses}")
+    except Exception as e:
+        logger.warning(f"LabEval2 models not preloaded at startup: {e}")
+
     yield
     # Shutdown
     logger.info("SignBridge backend shutting down.")
@@ -50,9 +59,10 @@ app = FastAPI(
     description=(
         "Production inference API for 76 Indian Sign Language word classes. "
         "Supports MobileNetV2 (Frozen Backbone, 67.78% Acc), Custom 2D CNN (5.00% Acc), "
-        "and CNN-LSTM Spatio-Temporal Model (4.44% Acc)."
+        "and CNN-LSTM Spatio-Temporal Model (4.44% Acc). "
+        "Includes Lab Evaluation 2 Conditional DCGAN + CNN Module."
     ),
-    version="1.1.0",
+    version="1.2.0",
     lifespan=lifespan
 )
 
@@ -65,6 +75,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount Lab Evaluation 2 module router
+app.include_router(lab_eval2_router)
 
 
 @app.get("/")
