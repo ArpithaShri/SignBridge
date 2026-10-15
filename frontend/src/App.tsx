@@ -4,7 +4,6 @@ import { Footer } from './components/layout/Footer';
 import { Dashboard } from './components/dashboard/Dashboard';
 import { RecognitionPage } from './components/recognition/RecognitionPage';
 import { ComparisonPage } from './components/comparison/ComparisonPage';
-import { LabEval2Page } from './components/labEval2/LabEval2Page';
 import { checkBackendHealth } from './services/recognitionApi';
 import type { NavigationTab } from './types';
 
@@ -59,10 +58,6 @@ export function App() {
 
         {currentTab === 'comparison' && (
           <ComparisonPage />
-        )}
-
-        {currentTab === 'lab-eval2' && (
-          <LabEval2Page />
         )}
       </main>
 
