@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, AlertCircle, ArrowLeft, Cpu, Activity, Sparkles } from 'lucide-react';
+import { Clock, ArrowLeft, Cpu, Activity, Sparkles } from 'lucide-react';
 
 interface GanCnnLstmPlaceholderProps {
   onBackToGanCnn: () => void;
@@ -8,83 +8,88 @@ interface GanCnnLstmPlaceholderProps {
 export const GanCnnLstmPlaceholder: React.FC<GanCnnLstmPlaceholderProps> = ({ onBackToGanCnn }) => {
   return (
     <div className="lab2-model-page">
-      {/* Header Banner */}
-      <div className="lab2-phase1-status-card border-amber/30 bg-amber/5">
-        <div className="lab2-phase1-status-icon text-amber">
-          <Clock size={28} />
-        </div>
-        <div className="lab2-phase1-status-content">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className="badge badge-amber">Phase 2: Pending Integration</span>
-            <span className="badge badge-neutral">Spatio-Temporal Sequence Model</span>
-            <span className="badge badge-neutral">76 Classes Planned</span>
+      {/* Header Card */}
+      <div className="lab2-card mb-6">
+        <div className="flex items-start gap-4">
+          <div className="lab2-mini-icon-badge amber shrink-0 mt-1">
+            <Clock size={22} />
           </div>
-          <h2 className="text-xl font-bold text-primary mb-1">
-            GAN + CNN-LSTM Architecture (Lab Evaluation 2)
-          </h2>
-          <p className="text-secondary text-sm leading-relaxed">
-            This module is reserved for evaluating sequence-level temporal dynamics augmented by generative sequence models or GAN frame interpolations. Artifact files and evaluation metrics have not yet been provided.
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className="badge badge-amber text-xs">Phase 2: Pending Integration</span>
+              <span className="badge badge-neutral text-xs">Spatio-Temporal Sequence Model</span>
+              <span className="badge badge-neutral text-xs">76 Classes Planned</span>
+            </div>
+            <h2 className="text-xl font-bold text-primary">
+              2. GAN + CNN-LSTM Architecture (Lab Evaluation 2)
+            </h2>
+            <p className="text-secondary text-sm leading-relaxed max-w-3xl">
+              This module is reserved for evaluating sequence-level temporal dynamics augmented by generative sequence models 
+              or GAN frame interpolations. Checkpoints and evaluation result archives are awaiting independent verification.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Information Cards Grid */}
+      <div className="lab2-card-grid mb-6">
+        <div className="lab2-card">
+          <div className="lab2-card-header">
+            <div className="lab2-mini-icon-badge brand">
+              <Cpu size={18} />
+            </div>
+            <h3 className="lab2-card-title">Planned Architecture</h3>
+          </div>
+          <p className="text-sm font-semibold text-primary mb-1">TimeDistributed 2D CNN + LSTM Backbone</p>
+          <p className="text-xs text-secondary leading-relaxed">
+            Extracts 2D spatial feature vectors across 16 sampled frames per sign gesture, feeding recurrent LSTM units 
+            to capture transition velocity and hand trajectories.
+          </p>
+        </div>
+
+        <div className="lab2-card">
+          <div className="lab2-card-header">
+            <div className="lab2-mini-icon-badge violet">
+              <Sparkles size={18} />
+            </div>
+            <h3 className="lab2-card-title">Generative Augmentation</h3>
+          </div>
+          <p className="text-sm font-semibold text-primary mb-1">Temporal Sequence Interpolation</p>
+          <p className="text-xs text-secondary leading-relaxed">
+            Explores latent trajectory synthesis and intermediate frame generation to alleviate gesture speed 
+            variations and infrequent sign samples.
+          </p>
+        </div>
+
+        <div className="lab2-card">
+          <div className="lab2-card-header">
+            <div className="lab2-mini-icon-badge amber">
+              <Activity size={18} />
+            </div>
+            <h3 className="lab2-card-title">Integration Status</h3>
+          </div>
+          <p className="text-sm font-semibold text-amber mb-1">Awaiting Experiment Artifacts</p>
+          <p className="text-xs text-secondary leading-relaxed">
+            Strictly maintained as an unpopulated placeholder to guarantee zero fabricated metrics. 
+            Will be populated once notebook training finishes.
           </p>
         </div>
       </div>
 
-      {/* Placeholder Details Card */}
-      <div className="lab2-card mb-6">
-        <div className="flex items-start gap-3">
-          <AlertCircle size={20} className="text-amber mt-0.5 shrink-0" />
-          <div className="space-y-2">
-            <h3 className="text-base font-semibold text-primary">Awaiting Model Checkpoints & Evaluation Artifacts</h3>
-            <p className="text-sm text-secondary leading-relaxed">
-              In accordance with Phase 2 specifications, this tab is strictly maintained as an unpopulated placeholder to prevent synthetic results fabrication. Only the <strong>GAN + CNN</strong> model has verified weights and evaluation metrics.
-            </p>
-          </div>
+      {/* Navigation Return Box */}
+      <div className="lab2-card flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h4 className="text-sm font-bold text-primary">Looking for verified experiment results?</h4>
+          <p className="text-xs text-secondary mt-0.5">The GAN + Custom 2D CNN experiment has fully verified models and held-out test data.</p>
         </div>
-
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 rounded-xl border border-border/40 bg-surface/40">
-            <div className="text-xs font-semibold text-secondary mb-1 flex items-center gap-1.5">
-              <Cpu size={14} className="text-brand" /> Planned Architecture
-            </div>
-            <div className="text-sm font-bold text-primary">TimeDistributed CNN + LSTM</div>
-            <p className="text-xs text-secondary mt-1">
-              Extracts 2D spatial features per sampled frame and models gesture sequence transitions across time.
-            </p>
-          </div>
-
-          <div className="p-4 rounded-xl border border-border/40 bg-surface/40">
-            <div className="text-xs font-semibold text-secondary mb-1 flex items-center gap-1.5">
-              <Sparkles size={14} className="text-violet" /> Generative Method
-            </div>
-            <div className="text-sm font-bold text-primary">Temporal Sequence Augmentation</div>
-            <p className="text-xs text-secondary mt-1">
-              Synthesizes intermediate sequence frames or video latent trajectories to enrich training variations.
-            </p>
-          </div>
-
-          <div className="p-4 rounded-xl border border-border/40 bg-surface/40">
-            <div className="text-xs font-semibold text-secondary mb-1 flex items-center gap-1.5">
-              <Activity size={14} className="text-cyan" /> Status
-            </div>
-            <div className="text-sm font-bold text-amber">Pending Checkpoint Upload</div>
-            <p className="text-xs text-secondary mt-1">
-              Notebook and evaluation results archive will be integrated in subsequent phases.
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-6 pt-4 border-t border-border/40 flex items-center justify-between">
-          <span className="text-xs text-secondary">
-            Looking for active experiment results?
-          </span>
-          <button
-            type="button"
-            className="btn btn-primary text-xs flex items-center gap-1.5"
-            onClick={onBackToGanCnn}
-          >
-            <ArrowLeft size={14} />
-            <span>Switch to Active GAN + CNN Tab</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          className="btn btn-primary text-xs font-semibold flex items-center gap-2"
+          onClick={onBackToGanCnn}
+        >
+          <ArrowLeft size={14} />
+          <span>Switch to Active GAN + CNN Tab</span>
+        </button>
       </div>
     </div>
   );

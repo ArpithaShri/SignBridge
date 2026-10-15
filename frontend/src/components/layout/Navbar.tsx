@@ -1,5 +1,19 @@
-import { Layers, Video, BarChart3, Sparkles, CheckCircle2, WifiOff } from 'lucide-react';
+import React, { useState } from 'react';
+import { 
+  Layers, 
+  Video, 
+  BarChart3, 
+  FlaskConical, 
+  Sparkles, 
+  CheckCircle2, 
+  WifiOff, 
+  Sun, 
+  Moon, 
+  Menu, 
+  X 
+} from 'lucide-react';
 import type { NavigationTab } from '../../types';
+import { useTheme } from '../../context/ThemeContext';
 
 interface NavbarProps {
   currentTab: NavigationTab;
@@ -8,39 +22,49 @@ interface NavbarProps {
   backendConnected: boolean;
 }
 
-export const Navbar = ({ currentTab, onSelectTab, backendConnected }: NavbarProps) => {
+export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab, backendConnected }) => {
+  const { theme, toggleTheme } = useTheme();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const handleSelectTab = (tab: NavigationTab) => {
+    onSelectTab(tab);
+    setMobileMenuOpen(false);
+  };
+
   return (
     <header className="navbar" role="banner">
       <div className="navbar-inner">
+        {/* Brand / Logo Section */}
         <div 
           className="brand-wrapper" 
-          onClick={() => onSelectTab('dashboard')} 
+          onClick={() => handleSelectTab('dashboard')} 
           role="button" 
           tabIndex={0}
-          onKeyDown={(e) => e.key === 'Enter' && onSelectTab('dashboard')}
+          onKeyDown={(e) => e.key === 'Enter' && handleSelectTab('dashboard')}
           aria-label="SignBridge Home"
         >
-          <div className="brand-logo-badge">
-            <Sparkles size={22} />
+          <div className="brand-logo-badge" aria-hidden="true">
+            <Sparkles size={20} />
           </div>
           <div className="brand-text-group">
-            <span className="brand-name">
-              SignBridge
+            <div className="brand-name">
+              <span>SignBridge</span>
               <span className="badge badge-brand">76 Classes</span>
-            </span>
+            </div>
             <span className="brand-tagline">Indian Sign Language Video Recognition</span>
           </div>
         </div>
 
-        <nav className="nav-tabs" aria-label="Main Navigation">
+        {/* Desktop Navigation Links */}
+        <nav className="nav-tabs desktop-only" aria-label="Main Navigation">
           <button
             id="nav-tab-dashboard"
             type="button"
             className={`nav-tab-button ${currentTab === 'dashboard' ? 'active' : ''}`}
-            onClick={() => onSelectTab('dashboard')}
+            onClick={() => handleSelectTab('dashboard')}
             aria-selected={currentTab === 'dashboard'}
           >
-            <Layers size={16} />
+            <Layers size={15} />
             <span>Dashboard</span>
           </button>
           
@@ -48,10 +72,10 @@ export const Navbar = ({ currentTab, onSelectTab, backendConnected }: NavbarProp
             id="nav-tab-recognition"
             type="button"
             className={`nav-tab-button ${currentTab === 'recognition' ? 'active' : ''}`}
-            onClick={() => onSelectTab('recognition')}
+            onClick={() => handleSelectTab('recognition')}
             aria-selected={currentTab === 'recognition'}
           >
-            <Video size={16} />
+            <Video size={15} />
             <span>ISL Recognition</span>
           </button>
 
@@ -59,10 +83,10 @@ export const Navbar = ({ currentTab, onSelectTab, backendConnected }: NavbarProp
             id="nav-tab-comparison"
             type="button"
             className={`nav-tab-button ${currentTab === 'comparison' ? 'active' : ''}`}
-            onClick={() => onSelectTab('comparison')}
+            onClick={() => handleSelectTab('comparison')}
             aria-selected={currentTab === 'comparison'}
           >
-            <BarChart3 size={16} />
+            <BarChart3 size={15} />
             <span>Model Comparison</span>
           </button>
 
@@ -70,16 +94,34 @@ export const Navbar = ({ currentTab, onSelectTab, backendConnected }: NavbarProp
             id="nav-tab-lab-eval-2"
             type="button"
             className={`nav-tab-button ${currentTab === 'lab-eval-2' ? 'active' : ''}`}
-            onClick={() => onSelectTab('lab-eval-2')}
+            onClick={() => handleSelectTab('lab-eval-2')}
             aria-selected={currentTab === 'lab-eval-2'}
           >
-            <Sparkles size={16} className="text-violet" />
+            <FlaskConical size={15} className="text-brand-accent" />
             <span>Lab Eval 2</span>
-            <span className="badge badge-brand text-[10px] ml-1">Research</span>
+            <span className="badge badge-brand-subtle text-[10px]">Research</span>
           </button>
         </nav>
 
+        {/* Right Status & Controls */}
         <div className="nav-status-group">
+          {/* Light / Dark Mode Toggle */}
+          <button
+            id="theme-toggle-btn"
+            type="button"
+            className="theme-toggle-btn"
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? 'Switch to Light mode' : 'Switch to Dark mode'}
+            title={theme === 'dark' ? 'Switch to Light mode' : 'Switch to Dark mode'}
+          >
+            {theme === 'dark' ? (
+              <Sun size={17} className="text-amber-theme" />
+            ) : (
+              <Moon size={17} className="text-indigo-theme" />
+            )}
+          </button>
+
+          {/* Backend Connection Status Badge */}
           {backendConnected ? (
             <div
               id="badge-backend-status"
@@ -87,7 +129,8 @@ export const Navbar = ({ currentTab, onSelectTab, backendConnected }: NavbarProp
               title="Connected to live Python FastAPI multi-model backend (Port 8000)"
             >
               <CheckCircle2 size={12} />
-              <span>Neural Engine Live</span>
+              <span className="status-text-full">Neural Engine Live</span>
+              <span className="status-text-mobile">Live</span>
             </div>
           ) : (
             <div
@@ -96,11 +139,64 @@ export const Navbar = ({ currentTab, onSelectTab, backendConnected }: NavbarProp
               title="FastAPI backend is offline. Start the backend with: cd backend && venv\Scripts\python -m uvicorn app.main:app --port 8000"
             >
               <WifiOff size={12} />
-              <span>Backend Offline</span>
+              <span className="status-text-full">Backend Offline</span>
+              <span className="status-text-mobile">Offline</span>
             </div>
           )}
+
+          {/* Mobile Menu Toggle Button */}
+          <button
+            type="button"
+            className="mobile-menu-btn"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label={mobileMenuOpen ? 'Close Navigation Menu' : 'Open Navigation Menu'}
+            aria-expanded={mobileMenuOpen}
+          >
+            {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
         </div>
       </div>
+
+      {/* Mobile Dropdown Menu */}
+      {mobileMenuOpen && (
+        <nav className="mobile-nav-menu" aria-label="Mobile Navigation">
+          <button
+            type="button"
+            className={`mobile-nav-item ${currentTab === 'dashboard' ? 'active' : ''}`}
+            onClick={() => handleSelectTab('dashboard')}
+          >
+            <Layers size={18} />
+            <span>Dashboard</span>
+          </button>
+          
+          <button
+            type="button"
+            className={`mobile-nav-item ${currentTab === 'recognition' ? 'active' : ''}`}
+            onClick={() => handleSelectTab('recognition')}
+          >
+            <Video size={18} />
+            <span>ISL Recognition</span>
+          </button>
+
+          <button
+            type="button"
+            className={`mobile-nav-item ${currentTab === 'comparison' ? 'active' : ''}`}
+            onClick={() => handleSelectTab('comparison')}
+          >
+            <BarChart3 size={18} />
+            <span>Model Comparison</span>
+          </button>
+
+          <button
+            type="button"
+            className={`mobile-nav-item ${currentTab === 'lab-eval-2' ? 'active' : ''}`}
+            onClick={() => handleSelectTab('lab-eval-2')}
+          >
+            <FlaskConical size={18} />
+            <span>Lab Eval 2 (Generative AI Research)</span>
+          </button>
+        </nav>
+      )}
     </header>
   );
 };

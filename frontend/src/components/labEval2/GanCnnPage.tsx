@@ -5,7 +5,7 @@ import {
   BarChart2, 
   Image as ImageIcon, 
   Upload, 
-  CheckCircle, 
+  CheckCircle2, 
   AlertTriangle, 
   Info, 
   Table, 
@@ -14,10 +14,13 @@ import {
   Database,
   RefreshCw,
   Wand2,
-  Eye,
   Activity,
   Clock,
-  Zap
+  Maximize2,
+  X,
+  HelpCircle,
+  TrendingUp,
+  ChevronDown
 } from 'lucide-react';
 import {
   fetchLabEval2Metadata,
@@ -27,7 +30,6 @@ import {
   VERIFIED_TEST_COMPARISON,
   VERIFIED_ROBUSTNESS,
   VERIFIED_LATENCY,
-  VERIFIED_GENERALIZATION_GAP,
 } from '../../services/labEval2Api';
 import type {
   LabEval2Overview,
@@ -41,10 +43,9 @@ interface GanCnnPageProps {
 }
 
 export const GanCnnPage: React.FC<GanCnnPageProps> = ({ onNavigateToTab }) => {
-  const [activeSection, setActiveSection] = useState<'overview' | 'training' | 'samples' | 'prediction' | 'results' | 'comparison'>('overview');
+  const [activeSection, setActiveSection] = useState<'overview' | 'training' | 'samples' | 'results' | 'findings' | 'prediction' | 'comparison'>('overview');
   const [metadata, setMetadata] = useState<LabEval2Overview | null>(null);
   const [metrics, setMetrics] = useState<LabEval2Metrics | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Prediction Interactive State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -63,6 +64,9 @@ export const GanCnnPage: React.FC<GanCnnPageProps> = ({ onNavigateToTab }) => {
   // Class Filter for Section E
   const [classFilter, setClassFilter] = useState<string>('');
 
+  // Plot Lightbox State
+  const [lightboxPlot, setLightboxPlot] = useState<{ src: string; title: string; desc: string } | null>(null);
+
   useEffect(() => {
     let mounted = true;
     const loadData = async () => {
@@ -74,15 +78,22 @@ export const GanCnnPage: React.FC<GanCnnPageProps> = ({ onNavigateToTab }) => {
         if (mounted) {
           setMetadata(metaData);
           setMetrics(metricsData);
-          setIsLoading(false);
         }
       } catch (err) {
         console.error('Failed to load Lab Eval 2 data:', err);
-        if (mounted) setIsLoading(false);
       }
     };
     loadData();
     return () => { mounted = false; };
+  }, []);
+
+  // Handle ESC key for Lightbox
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxPlot(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -143,10 +154,6 @@ export const GanCnnPage: React.FC<GanCnnPageProps> = ({ onNavigateToTab }) => {
     ? metrics.latency 
     : VERIFIED_LATENCY;
 
-  const genGapRows = metrics?.generalization_gap && metrics.generalization_gap.length > 0
-    ? metrics.generalization_gap
-    : VERIFIED_GENERALIZATION_GAP;
-
   const classesList = metadata?.classes && metadata.classes.length > 0
     ? metadata.classes
     : ['afternoon', 'animal', 'bad', 'before', 'bell', 'big', 'bird', 'black', 'blue', 'boat', 'book', 'boy', 'break', 'bridge', 'brother', 'bus', 'butterfly', 'call', 'car', 'cat', 'chair', 'church', 'city', 'clean', 'climb', 'close', 'cold', 'come', 'cook', 'cost', 'cow', 'cry', 'cup', 'dance', 'dark', 'daughter', 'day', 'deaf', 'doctor', 'dog', 'door', 'draw', 'drink', 'drive', 'dry', 'ear', 'eat', 'egg', 'elephant', 'empty', 'eye', 'face', 'fall', 'family', 'far', 'fast', 'fat', 'father', 'fear', 'feel', 'female', 'fight', 'fine', 'finger', 'fire', 'fish', 'flag', 'fly', 'food', 'foot', 'free', 'friend', 'fruit', 'full', 'game'];
@@ -157,226 +164,396 @@ export const GanCnnPage: React.FC<GanCnnPageProps> = ({ onNavigateToTab }) => {
 
   return (
     <div className="lab2-model-page">
-      {/* Verified Experiment Header */}
-      <div className="lab2-phase1-status-card">
-        <div className="lab2-phase1-status-icon">
-          <Sparkles size={24} className="text-violet" />
-        </div>
-        <div className="lab2-phase1-status-content">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className="badge badge-brand">Kaggle Verified Run</span>
-            <span className="badge badge-violet">76 ISL Word Classes</span>
-            <span className="badge badge-neutral">900 Held-Out Test Frames</span>
-            <span className="badge badge-success">3 Artifact Models Loaded</span>
-            {isLoading && (
-              <span className="badge badge-warning flex items-center gap-1">
-                <RefreshCw size={12} className="animate-spin" /> Fetching live metrics...
-              </span>
-            )}
+      {/* Lightbox Modal for Publication Plots */}
+      {lightboxPlot && (
+        <div 
+          className="lab2-lightbox-overlay" 
+          onClick={() => setLightboxPlot(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="lightbox-title"
+        >
+          <div className="lab2-lightbox-content" onClick={(e) => e.stopPropagation()}>
+            <div className="lab2-lightbox-header">
+              <div>
+                <h3 id="lightbox-title" className="text-base font-bold text-primary">
+                  {lightboxPlot.title}
+                </h3>
+                <p className="text-xs text-secondary mt-0.5">{lightboxPlot.desc}</p>
+              </div>
+              <button 
+                type="button" 
+                className="lab2-lightbox-close-btn"
+                onClick={() => setLightboxPlot(null)}
+                aria-label="Close zoomed view"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="lab2-lightbox-img-wrap">
+              <img src={lightboxPlot.src} alt={lightboxPlot.title} className="lab2-lightbox-img" />
+            </div>
+            <div className="lab2-lightbox-footer">
+              <span className="text-xs text-secondary">Verified experimental artifact from Kaggle run • Press ESC to close</span>
+            </div>
           </div>
-          <h2 className="text-xl font-bold text-primary mb-1">
-            GAN + Custom 2D CNN Experiment (SignBridge Lab Eval 2)
-          </h2>
-          <p className="text-secondary text-sm leading-relaxed">
-            Evaluates whether 50% class-conditioned synthetic frame augmentation generated by a Conditional DCGAN (100 epochs) 
-            improves the classification performance and robustness of a 4-Block Custom CNN across 76 Indian Sign Language classes.
-          </p>
         </div>
+      )}
+
+      {/* Internal Section Navigation Tabs */}
+      <div className="lab2-section-nav-wrap">
+        <nav className="lab2-section-nav" role="tablist" aria-label="GAN + CNN Experiment Navigation">
+          <button
+            type="button"
+            className={`lab2-section-nav-btn ${activeSection === 'overview' ? 'active' : ''}`}
+            onClick={() => setActiveSection('overview')}
+            role="tab"
+            aria-selected={activeSection === 'overview'}
+          >
+            <Cpu size={15} />
+            <span>A. Architecture & Overview</span>
+          </button>
+
+          <button
+            type="button"
+            className={`lab2-section-nav-btn ${activeSection === 'training' ? 'active' : ''}`}
+            onClick={() => setActiveSection('training')}
+            role="tab"
+            aria-selected={activeSection === 'training'}
+          >
+            <Database size={15} />
+            <span>B. Dataset & Training</span>
+          </button>
+
+          <button
+            type="button"
+            className={`lab2-section-nav-btn ${activeSection === 'samples' ? 'active' : ''}`}
+            onClick={() => setActiveSection('samples')}
+            role="tab"
+            aria-selected={activeSection === 'samples'}
+          >
+            <ImageIcon size={15} />
+            <span>C. Generated Samples</span>
+          </button>
+
+          <button
+            type="button"
+            className={`lab2-section-nav-btn ${activeSection === 'results' ? 'active' : ''}`}
+            onClick={() => setActiveSection('results')}
+            role="tab"
+            aria-selected={activeSection === 'results'}
+          >
+            <BarChart2 size={15} />
+            <span>D. Evaluation Results</span>
+          </button>
+
+          <button
+            type="button"
+            className={`lab2-section-nav-btn ${activeSection === 'findings' ? 'active' : ''}`}
+            onClick={() => setActiveSection('findings')}
+            role="tab"
+            aria-selected={activeSection === 'findings'}
+          >
+            <HelpCircle size={15} />
+            <span>E. Scientific Findings</span>
+          </button>
+
+          <button
+            type="button"
+            className={`lab2-section-nav-btn ${activeSection === 'prediction' ? 'active' : ''}`}
+            onClick={() => setActiveSection('prediction')}
+            role="tab"
+            aria-selected={activeSection === 'prediction'}
+          >
+            <Upload size={15} />
+            <span>F. Interactive Testing</span>
+          </button>
+
+          <button
+            type="button"
+            className={`lab2-section-nav-btn ${activeSection === 'comparison' ? 'active' : ''}`}
+            onClick={() => setActiveSection('comparison')}
+            role="tab"
+            aria-selected={activeSection === 'comparison'}
+          >
+            <Table size={15} />
+            <span>G. Tri-Model Comparison</span>
+          </button>
+        </nav>
       </div>
 
-      {/* Internal Section Navigation Sub-Tabs */}
-      <div className="lab2-section-nav" role="tablist" aria-label="GAN + CNN Sections">
-        <button
-          type="button"
-          className={`lab2-section-nav-btn ${activeSection === 'overview' ? 'active' : ''}`}
-          onClick={() => setActiveSection('overview')}
-        >
-          <Cpu size={15} />
-          <span>A. Model Overview</span>
-        </button>
-        <button
-          type="button"
-          className={`lab2-section-nav-btn ${activeSection === 'training' ? 'active' : ''}`}
-          onClick={() => setActiveSection('training')}
-        >
-          <Database size={15} />
-          <span>B. Dataset & Training</span>
-        </button>
-        <button
-          type="button"
-          className={`lab2-section-nav-btn ${activeSection === 'samples' ? 'active' : ''}`}
-          onClick={() => setActiveSection('samples')}
-        >
-          <ImageIcon size={15} />
-          <span>C. Generated Samples</span>
-        </button>
-        <button
-          type="button"
-          className={`lab2-section-nav-btn ${activeSection === 'prediction' ? 'active' : ''}`}
-          onClick={() => setActiveSection('prediction')}
-        >
-          <Upload size={15} />
-          <span>D. Model Testing</span>
-        </button>
-        <button
-          type="button"
-          className={`lab2-section-nav-btn ${activeSection === 'results' ? 'active' : ''}`}
-          onClick={() => setActiveSection('results')}
-        >
-          <BarChart2 size={15} />
-          <span>E. Evaluation Results</span>
-        </button>
-        <button
-          type="button"
-          className={`lab2-section-nav-btn ${activeSection === 'comparison' ? 'active' : ''}`}
-          onClick={() => setActiveSection('comparison')}
-        >
-          <Table size={15} />
-          <span>F. Cross-Model Comparison</span>
-        </button>
-      </div>
-
-      {/* SECTION A: Model Overview */}
+      {/* SECTION A: Model Architecture & Overview */}
       {activeSection === 'overview' && (
         <section className="lab2-section-content" aria-labelledby="heading-section-a">
           <div className="lab2-section-header">
-            <h3 id="heading-section-a" className="lab2-section-title">
-              <Cpu size={18} className="text-brand" />
-              <span>Section A: Verified Architecture & Configuration</span>
-            </h3>
-            <span className="badge badge-brand">Kaggle Checkpoints Attached</span>
+            <div>
+              <h2 id="heading-section-a" className="lab2-section-title">
+                <Cpu size={20} className="text-brand" />
+                <span>Section A: Verified Architecture & Configuration</span>
+              </h2>
+              <p className="lab2-section-subtitle">
+                Comprehensive specification of the 4-block convolutional backbone and the conditional DCGAN generative network.
+              </p>
+            </div>
+            <span className="badge badge-success text-xs">
+              <CheckCircle2 size={12} /> 3 Models Verified
+            </span>
           </div>
 
-          <div className="lab2-card-grid">
-            {/* Baseline Custom CNN Card */}
-            <div className="lab2-card">
-              <div className="lab2-card-header">
-                <Layers size={18} className="text-brand" />
-                <h4 className="lab2-card-title">1. Baseline Custom 2D CNN</h4>
-              </div>
-              <p className="lab2-card-body text-sm text-secondary">
-                Trained exclusively on authentic video frames extracted at 5 uniform intervals per video. 
-                Serves as the rigorous unaugmented control benchmark.
-              </p>
-              <div className="lab2-spec-box">
-                <div className="spec-row">
-                  <span className="spec-label">Input Shape:</span>
-                  <span className="spec-val font-mono">64 × 64 × 3 RGB</span>
-                </div>
-                <div className="spec-row">
-                  <span className="spec-label">Normalization:</span>
-                  <span className="spec-val font-mono">[-1.0, 1.0] (Rescaled to [0, 1] internally)</span>
-                </div>
-                <div className="spec-row">
-                  <span className="spec-label">Architecture:</span>
-                  <span className="spec-val">4× Conv2D (32, 64, 128, 256) + BatchNorm + GAP + Dense(128)</span>
-                </div>
-                <div className="spec-row">
-                  <span className="spec-label">Clean Test Accuracy:</span>
-                  <span className="spec-val font-bold text-emerald">49.89% (449 / 900 correct)</span>
-                </div>
-                <div className="spec-row">
-                  <span className="spec-label">Inference Latency:</span>
-                  <span className="spec-val font-mono">4.16 ms / frame</span>
-                </div>
-                <div className="spec-row">
-                  <span className="spec-label">Checkpoint:</span>
-                  <span className="badge badge-success font-mono text-[0.7rem]">baseline_cnn_best.keras</span>
-                </div>
-              </div>
+          {/* Quick Parameters Summary Grid */}
+          <div className="lab2-spec-cards-grid mb-6">
+            <div className="lab2-spec-card">
+              <span className="lab2-spec-card-label">Input Resolution</span>
+              <span className="lab2-spec-card-value font-mono">64 × 64 × 3</span>
+              <span className="lab2-spec-card-hint">RGB Color Format</span>
             </div>
-
-            {/* DCGAN-Augmented CNN Card */}
-            <div className="lab2-card">
-              <div className="lab2-card-header">
-                <Sparkles size={18} className="text-violet" />
-                <h4 className="lab2-card-title">2. DCGAN-Augmented Custom CNN</h4>
-              </div>
-              <p className="lab2-card-body text-sm text-secondary">
-                Trained with 50% synthetic frames generated by the class-conditioned DCGAN mixed with authentic training frames.
-              </p>
-              <div className="lab2-spec-box">
-                <div className="spec-row">
-                  <span className="spec-label">Input Shape:</span>
-                  <span className="spec-val font-mono">64 × 64 × 3 RGB</span>
-                </div>
-                <div className="spec-row">
-                  <span className="spec-label">Augmentation Ratio:</span>
-                  <span className="spec-val font-mono">50% Synthetic / 50% Real</span>
-                </div>
-                <div className="spec-row">
-                  <span className="spec-label">Architecture:</span>
-                  <span className="spec-val">Identical 4-Block Conv2D backbone to Baseline</span>
-                </div>
-                <div className="spec-row">
-                  <span className="spec-label">Clean Test Accuracy:</span>
-                  <span className="spec-val font-bold text-amber">29.00% (261 / 900 correct)</span>
-                </div>
-                <div className="spec-row">
-                  <span className="spec-label">Inference Latency:</span>
-                  <span className="spec-val font-mono">3.23 ms / frame</span>
-                </div>
-                <div className="spec-row">
-                  <span className="spec-label">Checkpoint:</span>
-                  <span className="badge badge-success font-mono text-[0.7rem]">gan_augmented_cnn_best.keras</span>
-                </div>
-              </div>
+            <div className="lab2-spec-card">
+              <span className="lab2-spec-card-label">Normalization Range</span>
+              <span className="lab2-spec-card-value font-mono">[-1.0, 1.0]</span>
+              <span className="lab2-spec-card-hint">frame / 127.5 - 1.0</span>
             </div>
-
-            {/* Conditional DCGAN Generator Card */}
-            <div className="lab2-card">
-              <div className="lab2-card-header">
-                <Wand2 size={18} className="text-cyan" />
-                <h4 className="lab2-card-title">3. Conditional DCGAN Generator</h4>
-              </div>
-              <p className="lab2-card-body text-sm text-secondary">
-                Generates 64×64 RGB hand frames conditioned on the target sign class label embedding.
-              </p>
-              <div className="lab2-spec-box">
-                <div className="spec-row">
-                  <span className="spec-label">Latent Noise Dim:</span>
-                  <span className="spec-val font-mono">100 dimensions (Gaussian ~ N(0, 1))</span>
-                </div>
-                <div className="spec-row">
-                  <span className="spec-label">Conditioning:</span>
-                  <span className="spec-val">Class Label Embedding (76 classes, 100-dim)</span>
-                </div>
-                <div className="spec-row">
-                  <span className="spec-label">Upsampling Layers:</span>
-                  <span className="spec-val">8×8 → 16×16 → 32×32 → 64×64 (Conv2DTranspose)</span>
-                </div>
-                <div className="spec-row">
-                  <span className="spec-label">Output Activation:</span>
-                  <span className="spec-val font-mono">tanh [-1.0, 1.0]</span>
-                </div>
-                <div className="spec-row">
-                  <span className="spec-label">Trained Epochs:</span>
-                  <span className="spec-val">100 Epochs</span>
-                </div>
-                <div className="spec-row">
-                  <span className="spec-label">Checkpoint:</span>
-                  <span className="badge badge-success font-mono text-[0.7rem]">generator_epoch_100.keras</span>
-                </div>
-              </div>
+            <div className="lab2-spec-card">
+              <span className="lab2-spec-card-label">Augmentation Ratio</span>
+              <span className="lab2-spec-card-value font-mono">50% Synthetic</span>
+              <span className="lab2-spec-card-hint">1:1 Real to Fake Balance</span>
+            </div>
+            <div className="lab2-spec-card">
+              <span className="lab2-spec-card-label">DCGAN Training</span>
+              <span className="lab2-spec-card-value font-mono">100 Epochs</span>
+              <span className="lab2-spec-card-hint">Latent Vector: 100 dims</span>
             </div>
           </div>
 
-          {/* Scientific Findings Banner */}
-          <div className="lab2-card mt-2">
-            <h4 className="text-sm font-semibold text-primary mb-2 flex items-center gap-2">
-              <Info size={16} className="text-brand" />
-              <span>Scientific Finding & Empirical Takeaway</span>
-            </h4>
-            <div className="text-xs text-secondary leading-relaxed space-y-2">
-              <p>
-                <strong>Clean Accuracy Gap:</strong> The unaugmented Baseline CNN significantly outperformed the DCGAN-augmented CNN on the clean test set (<strong>49.89%</strong> vs <strong>29.00%</strong>).
+          {/* 3 Architecture Cards */}
+          <div className="lab2-card-grid mb-6">
+            {/* Card 1: Baseline Custom 2D CNN */}
+            <div className="lab2-card">
+              <div className="lab2-card-header">
+                <div className="lab2-card-icon-title">
+                  <div className="lab2-mini-icon-badge brand">
+                    <Layers size={18} />
+                  </div>
+                  <div>
+                    <h3 className="lab2-card-title">1. Baseline Custom 2D CNN</h3>
+                    <span className="text-xs text-secondary">Unaugmented Control Model</span>
+                  </div>
+                </div>
+                <span className="badge badge-neutral text-xs font-mono">Clean: 49.89%</span>
+              </div>
+
+              <p className="text-sm text-secondary leading-relaxed mb-4">
+                Trained strictly on authentic video frames extracted at 5 uniform intervals per video. 
+                Serves as the empirical reference benchmark without synthetic perturbation.
               </p>
-              <p>
-                <strong>Mechanism:</strong> Downsampling video frames to 64×64 resolution removed high-frequency finger edge cues. The DCGAN synthesized indistinct hand blobs that confused decision boundaries on clean test data rather than acting as a regularizer.
+
+              <div className="lab2-meta-list">
+                <div className="lab2-meta-item">
+                  <span className="lab2-meta-key">Convolutional Backbone</span>
+                  <span className="lab2-meta-val font-mono">4 Blocks (32, 64, 128, 256)</span>
+                </div>
+                <div className="lab2-meta-item">
+                  <span className="lab2-meta-key">Pooling & Head</span>
+                  <span className="lab2-meta-val font-mono">GAP + Dense(128) + Dropout(0.4)</span>
+                </div>
+                <div className="lab2-meta-item">
+                  <span className="lab2-meta-key">Output Dimension</span>
+                  <span className="lab2-meta-val font-mono">76 Classes (Softmax)</span>
+                </div>
+                <div className="lab2-meta-item">
+                  <span className="lab2-meta-key">Clean Test Accuracy</span>
+                  <span className="lab2-meta-val font-mono text-emerald font-bold">49.89% (449 / 900)</span>
+                </div>
+                <div className="lab2-meta-item">
+                  <span className="lab2-meta-key">Mean Latency</span>
+                  <span className="lab2-meta-val font-mono text-cyan">4.16 ms / frame</span>
+                </div>
+                <div className="lab2-meta-item">
+                  <span className="lab2-meta-key">Saved Checkpoint</span>
+                  <span className="badge badge-brand font-mono text-[11px]">baseline_cnn_best.keras</span>
+                </div>
+              </div>
+
+              {/* Collapsible Layer Specifications */}
+              <details className="lab2-details-collapse mt-4">
+                <summary className="lab2-details-summary">
+                  <span>View Complete Layer Hierarchy</span>
+                  <ChevronDown size={14} className="details-arrow" />
+                </summary>
+                <div className="lab2-details-body text-xs font-mono">
+                  <table className="lab2-compact-table">
+                    <thead>
+                      <tr>
+                        <th>Layer</th>
+                        <th>Filters / Units</th>
+                        <th>Kernel</th>
+                        <th>Activation</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr><td>InputLayer</td><td>(64, 64, 3)</td><td>—</td><td>—</td></tr>
+                      <tr><td>Conv2D Block 1</td><td>32</td><td>3 × 3</td><td>ReLU + BatchNorm</td></tr>
+                      <tr><td>Conv2D Block 2</td><td>64</td><td>3 × 3</td><td>ReLU + BatchNorm</td></tr>
+                      <tr><td>Conv2D Block 3</td><td>128</td><td>3 × 3</td><td>ReLU + BatchNorm</td></tr>
+                      <tr><td>Conv2D Block 4</td><td>256</td><td>3 × 3</td><td>ReLU + BatchNorm</td></tr>
+                      <tr><td>GlobalAvgPool2D</td><td>256</td><td>—</td><td>—</td></tr>
+                      <tr><td>Dense + Dropout</td><td>128</td><td>—</td><td>ReLU (p=0.4)</td></tr>
+                      <tr><td>Softmax Head</td><td>76</td><td>—</td><td>Softmax</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            </div>
+
+            {/* Card 2: DCGAN-Augmented Custom CNN */}
+            <div className="lab2-card">
+              <div className="lab2-card-header">
+                <div className="lab2-card-icon-title">
+                  <div className="lab2-mini-icon-badge violet">
+                    <Sparkles size={18} />
+                  </div>
+                  <div>
+                    <h3 className="lab2-card-title">2. DCGAN-Augmented Custom CNN</h3>
+                    <span className="text-xs text-secondary">Synthetic-Enriched Model</span>
+                  </div>
+                </div>
+                <span className="badge badge-amber text-xs font-mono">Clean: 29.00%</span>
+              </div>
+
+              <p className="text-sm text-secondary leading-relaxed mb-4">
+                Trained with 50% synthetic frames generated by the class-conditioned DCGAN mixed with authentic 
+                training frames to evaluate generative data augmentation effects.
               </p>
-              <p>
-                <strong>Noise Resilience Tradeoff:</strong> Under severe Gaussian noise (STD=0.1 and 0.2), the DCGAN-augmented CNN demonstrated slightly higher accuracy retention (18.11% vs 15.33% at STD=0.1; 6.22% vs 4.44% at STD=0.2), confirming a trade-off between clean peak accuracy and perturbation robustness.
+
+              <div className="lab2-meta-list">
+                <div className="lab2-meta-item">
+                  <span className="lab2-meta-key">Convolutional Backbone</span>
+                  <span className="lab2-meta-val font-mono">Identical 4-Block Conv2D</span>
+                </div>
+                <div className="lab2-meta-item">
+                  <span className="lab2-meta-key">Training Mixture</span>
+                  <span className="lab2-meta-val font-mono">50% Real / 50% Synthetic</span>
+                </div>
+                <div className="lab2-meta-item">
+                  <span className="lab2-meta-key">Output Dimension</span>
+                  <span className="lab2-meta-val font-mono">76 Classes (Softmax)</span>
+                </div>
+                <div className="lab2-meta-item">
+                  <span className="lab2-meta-key">Clean Test Accuracy</span>
+                  <span className="lab2-meta-val font-mono text-amber font-bold">29.00% (261 / 900)</span>
+                </div>
+                <div className="lab2-meta-item">
+                  <span className="lab2-meta-key">Mean Latency</span>
+                  <span className="lab2-meta-val font-mono text-cyan">3.23 ms / frame</span>
+                </div>
+                <div className="lab2-meta-item">
+                  <span className="lab2-meta-key">Saved Checkpoint</span>
+                  <span className="badge badge-violet font-mono text-[11px]">gan_augmented_cnn_best.keras</span>
+                </div>
+              </div>
+
+              {/* Collapsible Layer Specifications */}
+              <details className="lab2-details-collapse mt-4">
+                <summary className="lab2-details-summary">
+                  <span>View Complete Layer Hierarchy</span>
+                  <ChevronDown size={14} className="details-arrow" />
+                </summary>
+                <div className="lab2-details-body text-xs font-mono">
+                  <table className="lab2-compact-table">
+                    <thead>
+                      <tr>
+                        <th>Layer</th>
+                        <th>Filters / Units</th>
+                        <th>Kernel</th>
+                        <th>Activation</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr><td>InputLayer</td><td>(64, 64, 3)</td><td>—</td><td>—</td></tr>
+                      <tr><td>Conv2D Block 1</td><td>32</td><td>3 × 3</td><td>ReLU + BatchNorm</td></tr>
+                      <tr><td>Conv2D Block 2</td><td>64</td><td>3 × 3</td><td>ReLU + BatchNorm</td></tr>
+                      <tr><td>Conv2D Block 3</td><td>128</td><td>3 × 3</td><td>ReLU + BatchNorm</td></tr>
+                      <tr><td>Conv2D Block 4</td><td>256</td><td>3 × 3</td><td>ReLU + BatchNorm</td></tr>
+                      <tr><td>GlobalAvgPool2D</td><td>256</td><td>—</td><td>—</td></tr>
+                      <tr><td>Dense + Dropout</td><td>128</td><td>—</td><td>ReLU (p=0.4)</td></tr>
+                      <tr><td>Softmax Head</td><td>76</td><td>—</td><td>Softmax</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            </div>
+
+            {/* Card 3: Conditional DCGAN Generator */}
+            <div className="lab2-card">
+              <div className="lab2-card-header">
+                <div className="lab2-card-icon-title">
+                  <div className="lab2-mini-icon-badge amber">
+                    <Wand2 size={18} />
+                  </div>
+                  <div>
+                    <h3 className="lab2-card-title">3. Conditional DCGAN Generator</h3>
+                    <span className="text-xs text-secondary">Generative Synthesis Engine</span>
+                  </div>
+                </div>
+                <span className="badge badge-success text-xs font-mono">100 Epochs</span>
+              </div>
+
+              <p className="text-sm text-secondary leading-relaxed mb-4">
+                Generates class-conditioned 64×64 RGB hand configuration frames conditioned on target 
+                ISL class label embeddings to balance training distributions.
               </p>
+
+              <div className="lab2-meta-list">
+                <div className="lab2-meta-item">
+                  <span className="lab2-meta-key">Latent Noise Vector</span>
+                  <span className="lab2-meta-val font-mono">100 Dimensions ~ N(0, 1)</span>
+                </div>
+                <div className="lab2-meta-item">
+                  <span className="lab2-meta-key">Conditioning Strategy</span>
+                  <span className="lab2-meta-val font-mono">Class Label Embedding (76 classes)</span>
+                </div>
+                <div className="lab2-meta-item">
+                  <span className="lab2-meta-key">Upsampling Pathway</span>
+                  <span className="lab2-meta-val font-mono">8×8 → 16×16 → 32×32 → 64×64</span>
+                </div>
+                <div className="lab2-meta-item">
+                  <span className="lab2-meta-key">Output Activation</span>
+                  <span className="lab2-meta-val font-mono text-cyan">tanh [-1.0, 1.0]</span>
+                </div>
+                <div className="lab2-meta-item">
+                  <span className="lab2-meta-key">Optimizer</span>
+                  <span className="lab2-meta-val font-mono">Adam (lr=0.0002, β1=0.5)</span>
+                </div>
+                <div className="lab2-meta-item">
+                  <span className="lab2-meta-key">Saved Checkpoint</span>
+                  <span className="badge badge-amber font-mono text-[11px]">generator_epoch_100.keras</span>
+                </div>
+              </div>
+
+              {/* Collapsible Layer Specifications */}
+              <details className="lab2-details-collapse mt-4">
+                <summary className="lab2-details-summary">
+                  <span>View Generator Architecture</span>
+                  <ChevronDown size={14} className="details-arrow" />
+                </summary>
+                <div className="lab2-details-body text-xs font-mono">
+                  <table className="lab2-compact-table">
+                    <thead>
+                      <tr>
+                        <th>Block</th>
+                        <th>Output Shape</th>
+                        <th>Operation</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr><td>Inputs</td><td>Noise (100) + Label (1)</td><td>Embedding concat</td></tr>
+                      <tr><td>Dense Projection</td><td>8 × 8 × 256</td><td>Reshape + BatchNorm</td></tr>
+                      <tr><td>Conv2DTranspose 1</td><td>16 × 16 × 128</td><td>ReLU + BatchNorm</td></tr>
+                      <tr><td>Conv2DTranspose 2</td><td>32 × 32 × 64</td><td>ReLU + BatchNorm</td></tr>
+                      <tr><td>Conv2DTranspose 3</td><td>64 × 64 × 3</td><td>Tanh Output</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </details>
             </div>
           </div>
         </section>
@@ -386,406 +563,324 @@ export const GanCnnPage: React.FC<GanCnnPageProps> = ({ onNavigateToTab }) => {
       {activeSection === 'training' && (
         <section className="lab2-section-content" aria-labelledby="heading-section-b">
           <div className="lab2-section-header">
-            <h3 id="heading-section-b" className="lab2-section-title">
-              <Database size={18} className="text-cyan" />
-              <span>Section B: Dataset Partition & Training Curves</span>
-            </h3>
-            <span className="badge badge-neutral">Protocol: Stratified Video Partition</span>
-          </div>
-
-          <div className="lab2-split-grid mb-4">
-            <div className="lab2-split-card">
-              <span className="text-xs text-secondary uppercase font-semibold">Total Sign Classes</span>
-              <span className="text-2xl font-mono font-bold text-primary mt-1">76</span>
-              <span className="text-xs text-secondary mt-1">Full ISL vocabulary</span>
-            </div>
-            <div className="lab2-split-card">
-              <span className="text-xs text-secondary uppercase font-semibold">Held-Out Test Frames</span>
-              <span className="text-2xl font-mono font-bold text-emerald mt-1">900</span>
-              <span className="text-xs text-secondary mt-1">Real video extractions</span>
-            </div>
-            <div className="lab2-split-card">
-              <span className="text-xs text-secondary uppercase font-semibold">DCGAN Training Epochs</span>
-              <span className="text-2xl font-mono font-bold text-violet mt-1">100</span>
-              <span className="text-xs text-secondary mt-1">Batch size 32</span>
-            </div>
-            <div className="lab2-split-card">
-              <span className="text-xs text-secondary uppercase font-semibold">Sampling Density</span>
-              <span className="text-2xl font-mono font-bold text-cyan mt-1">5</span>
-              <span className="text-xs text-secondary mt-1">Uniform frames / video</span>
-            </div>
-          </div>
-
-          {/* Training Curve Plots */}
-          <div className="lab2-card-grid">
-            <div className="lab2-card">
-              <h4 className="text-sm font-semibold text-primary mb-2 flex items-center gap-2">
-                <BarChart2 size={16} className="text-brand" />
-                <span>Classifier Learning Curves (Baseline vs Augmented)</span>
-              </h4>
-              <p className="text-xs text-secondary mb-3">
-                Training and validation accuracy/loss across epochs. Notice Baseline CNN early-stopped at epoch 44 while Augmented stopped at 31.
+            <div>
+              <h2 id="heading-section-b" className="lab2-section-title">
+                <Database size={20} className="text-brand" />
+                <span>Section B: Dataset Partitions & Training Dynamics</span>
+              </h2>
+              <p className="lab2-section-subtitle">
+                Split distributions across authentic video frames and progression of generator/discriminator losses.
               </p>
-              <div className="lab2-plot-img-box">
+            </div>
+            <span className="badge badge-neutral text-xs">ISL 76-Class Benchmark</span>
+          </div>
+
+          {/* Dataset Split Metrics */}
+          <div className="lab2-spec-cards-grid mb-6">
+            <div className="lab2-spec-card">
+              <span className="lab2-spec-card-label">Training Set (Real)</span>
+              <span className="lab2-spec-card-value font-mono">2,736</span>
+              <span className="lab2-spec-card-hint">60% Authentic Frames</span>
+            </div>
+            <div className="lab2-spec-card">
+              <span className="lab2-spec-card-label">Validation Set (Real)</span>
+              <span className="lab2-spec-card-value font-mono">912</span>
+              <span className="lab2-spec-card-hint">20% Authentic Frames</span>
+            </div>
+            <div className="lab2-spec-card">
+              <span className="lab2-spec-card-label">Held-Out Test (Real)</span>
+              <span className="lab2-spec-card-value font-mono text-emerald font-bold">900</span>
+              <span className="lab2-spec-card-hint">20% Strictly Isolated</span>
+            </div>
+            <div className="lab2-spec-card">
+              <span className="lab2-spec-card-label">Synthetic Samples Mixed</span>
+              <span className="lab2-spec-card-value font-mono text-amber">2,736</span>
+              <span className="lab2-spec-card-hint">50% Training Proportion</span>
+            </div>
+          </div>
+
+          {/* Training Curves Plots Grid */}
+          <div className="lab2-plots-grid mb-6">
+            <div className="lab2-plot-card">
+              <div className="lab2-plot-card-header">
+                <div>
+                  <h3 className="lab2-plot-card-title">Classifier Learning Curves</h3>
+                  <p className="text-xs text-secondary">Loss and accuracy trajectory over training epochs for Baseline vs. Augmented CNN</p>
+                </div>
+                <button 
+                  type="button" 
+                  className="btn-icon-subtle"
+                  onClick={() => setLightboxPlot({
+                    src: '/lab_eval2/plots/learning_curves.png',
+                    title: 'Classifier Learning Curves',
+                    desc: 'Loss and accuracy progression showing early convergence and generalization gap.'
+                  })}
+                  title="Click to enlarge"
+                >
+                  <Maximize2 size={15} />
+                </button>
+              </div>
+              <div 
+                className="lab2-plot-img-box"
+                onClick={() => setLightboxPlot({
+                  src: '/lab_eval2/plots/learning_curves.png',
+                  title: 'Classifier Learning Curves',
+                  desc: 'Loss and accuracy progression showing early convergence and generalization gap.'
+                })}
+              >
                 <img 
                   src="/lab_eval2/plots/learning_curves.png" 
                   alt="Classifier Learning Curves" 
                   className="lab2-plot-img"
                   loading="lazy"
                 />
+                <span className="lab2-plot-zoom-hint">Click to enlarge</span>
               </div>
             </div>
 
-            <div className="lab2-card">
-              <h4 className="text-sm font-semibold text-primary mb-2 flex items-center gap-2">
-                <Activity size={16} className="text-violet" />
-                <span>Conditional DCGAN Loss Trajectory</span>
-              </h4>
-              <p className="text-xs text-secondary mb-3">
-                Generator and Discriminator loss progression over 100 epochs with Adam optimizer (lr=2e-4, beta1=0.5).
-              </p>
-              <div className="lab2-plot-img-box">
+            <div className="lab2-plot-card">
+              <div className="lab2-plot-card-header">
+                <div>
+                  <h3 className="lab2-plot-card-title">DCGAN Adversarial Training Loss</h3>
+                  <p className="text-xs text-secondary">Generator vs. Discriminator binary cross-entropy loss over 100 epochs</p>
+                </div>
+                <button 
+                  type="button" 
+                  className="btn-icon-subtle"
+                  onClick={() => setLightboxPlot({
+                    src: '/lab_eval2/plots/gan_training_loss.png',
+                    title: 'DCGAN Training Loss Curves',
+                    desc: 'Minimax adversarial equilibrium tracking generator and discriminator loss dynamics.'
+                  })}
+                  title="Click to enlarge"
+                >
+                  <Maximize2 size={15} />
+                </button>
+              </div>
+              <div 
+                className="lab2-plot-img-box"
+                onClick={() => setLightboxPlot({
+                  src: '/lab_eval2/plots/gan_training_loss.png',
+                  title: 'DCGAN Training Loss Curves',
+                  desc: 'Minimax adversarial equilibrium tracking generator and discriminator loss dynamics.'
+                })}
+              >
                 <img 
                   src="/lab_eval2/plots/gan_training_loss.png" 
-                  alt="DCGAN Training Loss" 
+                  alt="DCGAN Loss Progression" 
                   className="lab2-plot-img"
                   loading="lazy"
                 />
+                <span className="lab2-plot-zoom-hint">Click to enlarge</span>
               </div>
-            </div>
-          </div>
-
-          {/* Generalization Gap Table */}
-          <div className="lab2-card mt-2">
-            <h4 className="text-sm font-semibold text-primary mb-2">Generalization Gap Assessment</h4>
-            <div className="lab2-metrics-table-wrap">
-              <table className="lab2-table">
-                <thead>
-                  <tr>
-                    <th>Model</th>
-                    <th>Train Accuracy</th>
-                    <th>Validation Accuracy</th>
-                    <th>Accuracy Gap</th>
-                    <th>Interpretation</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {genGapRows.map((r, i) => (
-                    <tr key={i}>
-                      <td className="font-semibold text-primary">{r.Model}</td>
-                      <td className="font-mono text-emerald">{(r.Train_Accuracy * 100).toFixed(2)}%</td>
-                      <td className="font-mono text-cyan">{(r.Validation_Accuracy * 100).toFixed(2)}%</td>
-                      <td className="font-mono text-amber font-bold">{(r.Accuracy_Gap * 100).toFixed(2)}%</td>
-                      <td className="text-xs text-secondary">
-                        {r.Model === 'Baseline CNN' 
-                          ? 'High capacity, significant overfitting to training videos' 
-                          : 'Heavy regularization from synthetic frame noise reduced training accuracy'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
           </div>
         </section>
       )}
 
-      {/* SECTION C: Generated Samples */}
+      {/* SECTION C: Generated Samples & Live Generator */}
       {activeSection === 'samples' && (
         <section className="lab2-section-content" aria-labelledby="heading-section-c">
           <div className="lab2-section-header">
-            <h3 id="heading-section-c" className="lab2-section-title">
-              <ImageIcon size={18} className="text-violet" />
-              <span>Section C: DCGAN Synthesized Gesture Gallery & Live Generator</span>
-            </h3>
-            <span className="badge badge-violet">Generator Checkpoint Live</span>
+            <div>
+              <h2 id="heading-section-c" className="lab2-section-title">
+                <ImageIcon size={20} className="text-brand" />
+                <span>Section C: Synthetic Sign Samples & Live DCGAN Generator</span>
+              </h2>
+              <p className="lab2-section-subtitle">
+                Inspect actual synthesized frames from the 100-epoch DCGAN checkpoint and generate novel frames in real-time.
+              </p>
+            </div>
+            <span className="badge badge-brand text-xs">Interactive Generator</span>
           </div>
 
-          {/* Live Generator Interactive Card */}
-          <div className="lab2-card mb-4">
-            <div className="lab2-card-header">
-              <Wand2 size={18} className="text-violet" />
-              <h4 className="lab2-card-title">Live Conditional DCGAN Generator Playground</h4>
+          {/* Interactive Live Generator Box */}
+          <div className="lab2-card mb-6">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+              <div className="flex items-center gap-2">
+                <Wand2 size={18} className="text-violet" />
+                <h3 className="text-base font-semibold text-primary">Live Class-Conditioned Generator</h3>
+              </div>
+              <span className="badge badge-violet text-xs">Keras 3 SavedModel Online</span>
             </div>
-            <p className="text-xs text-secondary mb-4">
-              Select any of the 76 sign classes and click <strong>Synthesize Live Frame</strong>. 
-              The backend runs <code>generator_epoch_100.keras</code> with random Gaussian noise conditioned on the sign embedding.
+
+            <p className="text-sm text-secondary mb-4 leading-relaxed">
+              Synthesizes a novel 64×64 RGB gesture frame conditioned on any of the 76 vocabulary classes. 
+              The backend queries the loaded <code>generator_epoch_100.keras</code> model with a 100-dimensional Gaussian noise vector.
             </p>
 
-            <div className="lab2-generator-bar">
-              <div className="generator-input-group">
-                <label className="text-xs text-secondary font-semibold">Target Class (0..75):</label>
-                <select 
-                  className="lab2-select"
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end mb-4">
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1">
+                  Target Sign Class (76 Classes):
+                </label>
+                <select
                   value={selectedClassForGen}
                   onChange={(e) => setSelectedClassForGen(e.target.value)}
+                  className="lab2-select w-full"
                 >
-                  {classesList.map((cls, idx) => (
+                  {classesList.map((cls) => (
                     <option key={cls} value={cls}>
-                      #{idx}: {cls}
+                      {cls}
                     </option>
                   ))}
                 </select>
               </div>
 
-              <div className="generator-input-group">
-                <label className="text-xs text-secondary font-semibold">Seed:</label>
-                <input 
-                  type="number" 
-                  className="lab2-input w-24"
-                  value={generatorSeed}
-                  onChange={(e) => setGeneratorSeed(parseInt(e.target.value) || 0)}
-                />
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1">
+                  Random Latent Seed:
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={generatorSeed}
+                    onChange={(e) => setGeneratorSeed(parseInt(e.target.value) || 0)}
+                    className="lab2-input w-full font-mono text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setGeneratorSeed(Math.floor(Math.random() * 10000))}
+                    className="btn btn-secondary text-xs"
+                    title="Randomize seed"
+                  >
+                    Random
+                  </button>
+                </div>
               </div>
 
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleGenerateLive}
-                disabled={isGenerating}
-              >
-                {isGenerating ? (
-                  <>
-                    <RefreshCw size={14} className="animate-spin mr-1" />
-                    <span>Synthesizing...</span>
-                  </>
-                ) : (
-                  <>
-                    <Wand2 size={14} className="mr-1" />
-                    <span>Synthesize Live Frame</span>
-                  </>
-                )}
-              </button>
+              <div>
+                <button
+                  type="button"
+                  onClick={handleGenerateLive}
+                  disabled={isGenerating}
+                  className="btn btn-primary w-full text-xs font-semibold flex items-center justify-center gap-2"
+                >
+                  {isGenerating ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      <span>Synthesizing Frame...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 size={14} />
+                      <span>Generate Sign Frame</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
             {genError && (
-              <div className="lab2-placeholder-notice mt-3 text-red-300 border-red-500/30 bg-red-500/10">
-                <AlertTriangle size={16} className="text-red-400 shrink-0" />
+              <div className="lab2-alert-error mb-4">
+                <AlertTriangle size={15} />
                 <span>{genError}</span>
               </div>
             )}
 
             {generatedResult && (
-              <div className="lab2-gen-result-box mt-4">
+              <div className="lab2-gen-result-card">
                 <div className="flex items-center gap-4 flex-wrap">
-                  <div className="lab2-pixelated-frame-wrap">
-                    <img 
-                      src={generatedResult.image_data_url} 
-                      alt={`Synthesized ${generatedResult.class_name}`} 
-                      className="lab2-pixelated-img"
+                  <div className="lab2-generated-img-frame">
+                    <img
+                      src={generatedResult.image_data_url}
+                      alt={`Synthesized sign for ${generatedResult.class_name}`}
+                      className="lab2-pixel-preview"
                     />
-                    <span className="lab2-res-tag">64×64</span>
                   </div>
-                  <div className="flex flex-col gap-1 text-xs">
-                    <span className="badge badge-violet w-fit">Live Neural Generation</span>
-                    <span className="text-primary font-bold text-sm">Class: {generatedResult.class_name} (Index #{generatedResult.class_index})</span>
-                    <span className="text-secondary font-mono">Resolution: 64×64 RGB | Latent Dim: 100</span>
-                    <span className="text-secondary font-mono">Generation Latency: {generatedResult.latency_ms} ms</span>
-                    <span className="text-secondary mt-1 italic">
-                      Note: Exhibits typical DCGAN 64×64 artifacts (blur, indistinct fingers) as analyzed in the experiment.
-                    </span>
+                  <div className="space-y-1">
+                    <div className="text-xs font-semibold text-secondary">Synthesized Output Details:</div>
+                    <div className="text-lg font-bold text-primary capitalize">{generatedResult.class_name}</div>
+                    <div className="text-xs text-secondary font-mono">
+                      Dimension: {generatedResult.image_size || '64 × 64 × 3 RGB'} • Latency: {generatedResult.latency_ms} ms
+                    </div>
+                    <div className="text-xs text-violet font-mono">
+                      Class Index: {generatedResult.class_index} • Seed: {generatedResult.seed ?? generatorSeed}
+                    </div>
                   </div>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Actual Experiment Output Grid */}
-          <div className="lab2-card">
-            <h4 className="text-sm font-semibold text-primary mb-2 flex items-center gap-2">
-              <Eye size={16} className="text-brand" />
-              <span>Verified 76-Class DCGAN Generated Samples Grid (From Training Archive)</span>
-            </h4>
-            <p className="text-xs text-secondary mb-3">
-              Actual output grid saved at epoch 100 of the Kaggle experiment across multiple sign classes.
-            </p>
-            <div className="lab2-plot-img-box">
+          {/* Static Verified Samples Plot */}
+          <div className="lab2-plot-card mb-6">
+            <div className="lab2-plot-card-header">
+              <div>
+                <h3 className="lab2-plot-card-title">Verified Synthetic Sign Sample Grid</h3>
+                <p className="text-xs text-secondary">Actual generated samples from the 100-epoch DCGAN training checkpoint across sample ISL words</p>
+              </div>
+              <button 
+                type="button" 
+                className="btn-icon-subtle"
+                onClick={() => setLightboxPlot({
+                  src: '/lab_eval2/plots/synthetic_samples.png',
+                  title: 'Verified Synthetic Sign Sample Grid',
+                  desc: 'High-resolution sample matrix showing hand contour synthesis across multiple word classes.'
+                })}
+                title="Click to enlarge"
+              >
+                <Maximize2 size={15} />
+              </button>
+            </div>
+            <div 
+              className="lab2-plot-img-box"
+              onClick={() => setLightboxPlot({
+                src: '/lab_eval2/plots/synthetic_samples.png',
+                title: 'Verified Synthetic Sign Sample Grid',
+                desc: 'High-resolution sample matrix showing hand contour synthesis across multiple word classes.'
+              })}
+            >
               <img 
                 src="/lab_eval2/plots/synthetic_samples.png" 
-                alt="DCGAN Generated Samples Grid" 
+                alt="Synthetic Sign Samples" 
                 className="lab2-plot-img"
                 loading="lazy"
               />
+              <span className="lab2-plot-zoom-hint">Click to enlarge</span>
             </div>
           </div>
         </section>
       )}
 
-      {/* SECTION D: Model Testing & Prediction */}
-      {activeSection === 'prediction' && (
+      {/* SECTION D: Empirical Evaluation Results */}
+      {activeSection === 'results' && (
         <section className="lab2-section-content" aria-labelledby="heading-section-d">
           <div className="lab2-section-header">
-            <h3 id="heading-section-d" className="lab2-section-title">
-              <Upload size={18} className="text-brand" />
-              <span>Section D: Live Model Testing & Side-by-Side Prediction</span>
-            </h3>
-            <span className="badge badge-brand">Dual Neural Inference</span>
-          </div>
-
-          <div className="lab2-card mb-4">
-            <div className="lab2-card-header">
-              <Upload size={18} className="text-brand" />
-              <h4 className="lab2-card-title">Upload Test Frame or Video Clip</h4>
+            <div>
+              <h2 id="heading-section-d" className="lab2-section-title">
+                <BarChart2 size={20} className="text-brand" />
+                <span>Section D: Empirical Evaluation & Benchmarks</span>
+              </h2>
+              <p className="lab2-section-subtitle">
+                Held-out test set performance (900 real frames), Gaussian noise robustness sweeps, latency, and full 76-class confusion matrices.
+              </p>
             </div>
-            <p className="text-xs text-secondary mb-3">
-              Upload any sign gesture image frame (PNG, JPG) or short video clip (MP4, WebM). 
-              The backend resizes to 64×64, scales to [-1.0, 1.0], and executes simultaneous forward passes through both 
-              <strong> Baseline CNN</strong> and <strong>DCGAN-Augmented CNN</strong>.
-            </p>
-
-            <div className="lab2-dropzone-box">
-              <input 
-                type="file" 
-                id="lab2-file-input"
-                accept="image/*,video/*"
-                onChange={handleFileChange}
-                className="hidden"
-              />
-              <label htmlFor="lab2-file-input" className="lab2-dropzone-label">
-                {previewUrl ? (
-                  <img src={previewUrl} alt="Upload preview" className="w-24 h-24 object-cover rounded-md border border-white/20 mb-2" />
-                ) : (
-                  <Upload size={32} className="text-brand mb-2 opacity-60" />
-                )}
-                <span className="text-sm font-semibold text-primary">
-                  {selectedFile ? selectedFile.name : 'Click to select frame or drag and drop'}
-                </span>
-                <span className="text-xs text-secondary mt-1">
-                  Supports PNG, JPG, WebP images or MP4/WebM videos (Max 50MB)
-                </span>
-              </label>
-
-              {selectedFile && (
-                <div className="mt-4 flex items-center justify-center gap-3">
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={handleRunPrediction}
-                    disabled={isPredicting}
-                  >
-                    {isPredicting ? (
-                      <>
-                        <RefreshCw size={14} className="animate-spin mr-1" />
-                        <span>Running Tri-Pass Inference...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Zap size={14} className="mr-1" />
-                        <span>Run Dual Model Prediction</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {predictError && (
-              <div className="lab2-placeholder-notice mt-3 text-red-300 border-red-500/30 bg-red-500/10">
-                <AlertTriangle size={16} className="text-red-400 shrink-0" />
-                <span>{predictError}</span>
-              </div>
-            )}
-
-            {/* Prediction Results Display */}
-            {predictionResult && (
-              <div className="mt-6">
-                <h4 className="text-sm font-bold text-primary mb-3">
-                  Inference Results ({predictionResult.input_info})
-                </h4>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Baseline Prediction Card */}
-                  {predictionResult.baseline && (
-                    <div className="lab2-card border-brand/30 bg-brand/5">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="badge badge-brand">Baseline CNN (Real Only)</span>
-                        <span className="text-xs font-mono text-secondary">
-                          {predictionResult.baseline.latency_ms} ms
-                        </span>
-                      </div>
-                      <div className="text-xl font-bold text-primary mb-1">
-                        {predictionResult.baseline.predicted_class}
-                      </div>
-                      <div className="text-xs text-emerald font-semibold mb-3">
-                        Confidence: {(predictionResult.baseline.confidence * 100).toFixed(1)}%
-                      </div>
-
-                      <div className="text-xs text-secondary font-semibold mb-1">Top 5 Softmax Probabilities:</div>
-                      <div className="space-y-1">
-                        {predictionResult.baseline.top5.map((p, idx) => (
-                          <div key={idx} className="flex items-center justify-between text-xs py-0.5">
-                            <span className="text-primary">{p.class_name}</span>
-                            <span className="font-mono text-secondary">{(p.confidence * 100).toFixed(1)}%</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* GAN Augmented Prediction Card */}
-                  {predictionResult.gan_augmented && (
-                    <div className="lab2-card border-violet/30 bg-violet/5">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="badge badge-violet">DCGAN + CNN (Augmented)</span>
-                        <span className="text-xs font-mono text-secondary">
-                          {predictionResult.gan_augmented.latency_ms} ms
-                        </span>
-                      </div>
-                      <div className="text-xl font-bold text-primary mb-1">
-                        {predictionResult.gan_augmented.predicted_class}
-                      </div>
-                      <div className="text-xs text-amber font-semibold mb-3">
-                        Confidence: {(predictionResult.gan_augmented.confidence * 100).toFixed(1)}%
-                      </div>
-
-                      <div className="text-xs text-secondary font-semibold mb-1">Top 5 Softmax Probabilities:</div>
-                      <div className="space-y-1">
-                        {predictionResult.gan_augmented.top5.map((p, idx) => (
-                          <div key={idx} className="flex items-center justify-between text-xs py-0.5">
-                            <span className="text-primary">{p.class_name}</span>
-                            <span className="font-mono text-secondary">{(p.confidence * 100).toFixed(1)}%</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* SECTION E: Evaluation Results */}
-      {activeSection === 'results' && (
-        <section className="lab2-section-content" aria-labelledby="heading-section-e">
-          <div className="lab2-section-header">
-            <h3 id="heading-section-e" className="lab2-section-title">
-              <BarChart2 size={18} className="text-emerald" />
-              <span>Section E: Empirical Test Evaluation, Confusion Matrices & Grad-CAM</span>
-            </h3>
-            <span className="badge badge-neutral">Held-Out Test Set (900 Real Frames)</span>
+            <span className="badge badge-neutral text-xs">Held-Out Test (900 Real Frames)</span>
           </div>
 
           {/* Primary Test Comparison Table */}
-          <div className="lab2-card mb-4">
-            <h4 className="text-sm font-semibold text-primary mb-2">Overall Test Set Performance Comparison</h4>
-            <div className="lab2-metrics-table-wrap">
+          <div className="lab2-card mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-primary">Overall Test Set Performance Comparison</h3>
+              <span className="text-xs text-secondary">Evaluated on identical 900 authentic frames</span>
+            </div>
+            <div className="lab2-table-wrap">
               <table className="lab2-table">
                 <thead>
                   <tr>
-                    <th>Model</th>
+                    <th>Model Architecture</th>
                     <th>Clean Accuracy</th>
                     <th>Macro Precision</th>
                     <th>Macro Recall</th>
                     <th>Macro F1</th>
                     <th>Weighted F1</th>
-                    <th>Latency / frame</th>
+                    <th>Mean Latency</th>
                   </tr>
                 </thead>
                 <tbody>
                   {testComp.map((r, i) => (
-                    <tr key={i} className={r.Model === 'Baseline CNN' ? 'lab2-table-row-active' : ''}>
+                    <tr key={i} className={r.Model === 'Baseline CNN' ? 'lab2-table-active-row' : ''}>
                       <td className="font-bold text-primary">{r.Model}</td>
                       <td className="font-mono text-emerald font-bold">{(r.Accuracy * 100).toFixed(2)}%</td>
                       <td className="font-mono text-primary">{(r['Macro Precision'] * 100).toFixed(2)}%</td>
@@ -802,76 +897,134 @@ export const GanCnnPage: React.FC<GanCnnPageProps> = ({ onNavigateToTab }) => {
             </div>
           </div>
 
-          {/* Confusion Matrices Plot */}
-          <div className="lab2-card mb-4">
-            <h4 className="text-sm font-semibold text-primary mb-2 flex items-center gap-2">
-              <Table size={16} className="text-brand" />
-              <span>Full 76-Class Confusion Matrices (Side-by-Side)</span>
-            </h4>
-            <p className="text-xs text-secondary mb-3">
-              True class index vs predicted class index for all 76 Indian Sign Language word classes on the 900 held-out test frames.
-            </p>
-            <div className="lab2-plot-img-box">
+          {/* Side-by-Side Confusion Matrices Plot */}
+          <div className="lab2-plot-card mb-6">
+            <div className="lab2-plot-card-header">
+              <div>
+                <h3 className="lab2-plot-card-title">Full 76-Class Confusion Matrices (Side-by-Side)</h3>
+                <p className="text-xs text-secondary">True class index vs. predicted class index across all 76 Indian Sign Language word classes</p>
+              </div>
+              <button 
+                type="button" 
+                className="btn-icon-subtle"
+                onClick={() => setLightboxPlot({
+                  src: '/lab_eval2/plots/confusion_matrices.png',
+                  title: '76-Class Side-by-Side Confusion Matrices',
+                  desc: 'Compares diagonal concentration: Baseline CNN shows sharper diagonal discrimination across vocabulary.'
+                })}
+                title="Click to enlarge"
+              >
+                <Maximize2 size={15} />
+              </button>
+            </div>
+            <div 
+              className="lab2-plot-img-box"
+              onClick={() => setLightboxPlot({
+                src: '/lab_eval2/plots/confusion_matrices.png',
+                title: '76-Class Side-by-Side Confusion Matrices',
+                desc: 'Compares diagonal concentration: Baseline CNN shows sharper diagonal discrimination across vocabulary.'
+              })}
+            >
               <img 
                 src="/lab_eval2/plots/confusion_matrices.png" 
                 alt="Confusion Matrices" 
                 className="lab2-plot-img"
                 loading="lazy"
               />
+              <span className="lab2-plot-zoom-hint">Click to enlarge</span>
             </div>
           </div>
 
-          {/* Grad-CAM Explainability & Uncertainty Plots */}
-          <div className="lab2-card-grid mb-4">
-            <div className="lab2-card">
-              <h4 className="text-sm font-semibold text-primary mb-2 flex items-center gap-2">
-                <Eye size={16} className="text-cyan" />
-                <span>Grad-CAM Spatial Explainability Heatmaps</span>
-              </h4>
-              <p className="text-xs text-secondary mb-3">
-                Visualizes convolutional activation gradients. Reveals how DCGAN augmentation alters spatial focus on hand shapes.
-              </p>
-              <div className="lab2-plot-img-box">
+          {/* Grad-CAM and Uncertainty Plots */}
+          <div className="lab2-plots-grid mb-6">
+            <div className="lab2-plot-card">
+              <div className="lab2-plot-card-header">
+                <div>
+                  <h3 className="lab2-plot-card-title">Grad-CAM Spatial Heatmaps</h3>
+                  <p className="text-xs text-secondary">Visualizes convolutional activation gradients on hand contours</p>
+                </div>
+                <button 
+                  type="button" 
+                  className="btn-icon-subtle"
+                  onClick={() => setLightboxPlot({
+                    src: '/lab_eval2/plots/gradcam_explainability.png',
+                    title: 'Grad-CAM Explainability Heatmaps',
+                    desc: 'Reveals differences in spatial feature activation between real and synthetic trained networks.'
+                  })}
+                >
+                  <Maximize2 size={15} />
+                </button>
+              </div>
+              <div 
+                className="lab2-plot-img-box"
+                onClick={() => setLightboxPlot({
+                  src: '/lab_eval2/plots/gradcam_explainability.png',
+                  title: 'Grad-CAM Explainability Heatmaps',
+                  desc: 'Reveals differences in spatial feature activation between real and synthetic trained networks.'
+                })}
+              >
                 <img 
                   src="/lab_eval2/plots/gradcam_explainability.png" 
                   alt="Grad-CAM Explainability" 
                   className="lab2-plot-img"
                   loading="lazy"
                 />
+                <span className="lab2-plot-zoom-hint">Click to enlarge</span>
               </div>
             </div>
 
-            <div className="lab2-card">
-              <h4 className="text-sm font-semibold text-primary mb-2 flex items-center gap-2">
-                <Activity size={16} className="text-amber" />
-                <span>Prediction Uncertainty Distribution</span>
-              </h4>
-              <p className="text-xs text-secondary mb-3">
-                Confidence histogram: DCGAN+CNN exhibits higher uncertainty (89.56% low confidence vs 44.33% for Baseline).
-              </p>
-              <div className="lab2-plot-img-box">
+            <div className="lab2-plot-card">
+              <div className="lab2-plot-card-header">
+                <div>
+                  <h3 className="lab2-plot-card-title">Prediction Uncertainty Distribution</h3>
+                  <p className="text-xs text-secondary">Confidence distribution: DCGAN+CNN exhibits higher uncertainty</p>
+                </div>
+                <button 
+                  type="button" 
+                  className="btn-icon-subtle"
+                  onClick={() => setLightboxPlot({
+                    src: '/lab_eval2/plots/uncertainty_confidence_distribution.png',
+                    title: 'Prediction Uncertainty Distribution',
+                    desc: 'Quantifies softmax entropy: Baseline exhibits 44.33% low confidence predictions vs 89.56% for DCGAN.'
+                  })}
+                >
+                  <Maximize2 size={15} />
+                </button>
+              </div>
+              <div 
+                className="lab2-plot-img-box"
+                onClick={() => setLightboxPlot({
+                  src: '/lab_eval2/plots/uncertainty_confidence_distribution.png',
+                  title: 'Prediction Uncertainty Distribution',
+                  desc: 'Quantifies softmax entropy: Baseline exhibits 44.33% low confidence predictions vs 89.56% for DCGAN.'
+                })}
+              >
                 <img 
                   src="/lab_eval2/plots/uncertainty_confidence_distribution.png" 
                   alt="Uncertainty Distribution" 
                   className="lab2-plot-img"
                   loading="lazy"
                 />
+                <span className="lab2-plot-zoom-hint">Click to enlarge</span>
               </div>
             </div>
           </div>
 
-          {/* Robustness Under Noise Perturbations */}
-          <div className="lab2-card mb-4">
-            <h4 className="text-sm font-semibold text-primary mb-2">Noise Perturbation Robustness Benchmarks</h4>
-            <div className="lab2-metrics-table-wrap">
+          {/* Noise Robustness Table */}
+          <div className="lab2-card mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-primary">Noise Perturbation Robustness Benchmarks</h3>
+              <span className="badge badge-amber text-xs font-mono">Gaussian Perturbation σ ∈ [0.0, 0.2]</span>
+            </div>
+            <div className="lab2-table-wrap">
               <table className="lab2-table">
                 <thead>
                   <tr>
                     <th>Model</th>
-                    <th>Gaussian Noise (STD)</th>
+                    <th>Gaussian Noise (σ)</th>
                     <th>Test Accuracy</th>
                     <th>Macro F1</th>
-                    <th>Retention Behavior</th>
+                    <th>Empirical Retention Behavior</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -882,9 +1035,9 @@ export const GanCnnPage: React.FC<GanCnnPageProps> = ({ onNavigateToTab }) => {
                       <td className="font-mono text-emerald">{(r.Accuracy * 100).toFixed(2)}%</td>
                       <td className="font-mono text-violet">{(r.Macro_F1 * 100).toFixed(2)}%</td>
                       <td className="text-xs text-secondary">
-                        {r.Noise_STD === 0.0 && 'Clean baseline reference'}
+                        {r.Noise_STD === 0.0 && 'Clean baseline benchmark'}
                         {r.Noise_STD === 0.05 && (r.Model.includes('DCGAN') ? 'Minimal degradation (-1.11%)' : 'Moderate drop (-13.11%)')}
-                        {r.Noise_STD === 0.1 && (r.Model.includes('DCGAN') ? 'Higher resilience than baseline (18.11% vs 15.33%)' : 'Sharp degradation (-34.56%)')}
+                        {r.Noise_STD === 0.1 && (r.Model.includes('DCGAN') ? 'Superior retention: 18.11% vs. 15.33% Baseline' : 'Sharp degradation (-34.56%)')}
                         {r.Noise_STD === 0.2 && (r.Model.includes('DCGAN') ? 'Retained 6.22% accuracy under extreme noise' : 'Collapsed to 4.44%')}
                       </td>
                     </tr>
@@ -894,21 +1047,24 @@ export const GanCnnPage: React.FC<GanCnnPageProps> = ({ onNavigateToTab }) => {
             </div>
           </div>
 
-          {/* Latency and Throughput Benchmarks */}
-          <div className="lab2-card mb-4">
-            <h4 className="text-sm font-semibold text-primary mb-2 flex items-center gap-2">
-              <Clock size={16} className="text-cyan" />
-              <span>Inference Latency & Throughput Benchmarks (900 Real Test Images)</span>
-            </h4>
-            <div className="lab2-metrics-table-wrap">
+          {/* Latency & Throughput Benchmarks */}
+          <div className="lab2-card mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-primary flex items-center gap-2">
+                <Clock size={16} className="text-cyan" />
+                <span>Inference Latency & Throughput Benchmarks (900 Real Test Images)</span>
+              </h3>
+              <span className="text-xs text-secondary">Single Frame Batch Mode</span>
+            </div>
+            <div className="lab2-table-wrap">
               <table className="lab2-table">
                 <thead>
                   <tr>
-                    <th>Model</th>
+                    <th>Model Architecture</th>
                     <th>Frames Tested</th>
-                    <th>Total Time (s)</th>
+                    <th>Total Benchmark Time</th>
                     <th>Mean Latency</th>
-                    <th>Throughput</th>
+                    <th>Inferred Throughput</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -930,9 +1086,12 @@ export const GanCnnPage: React.FC<GanCnnPageProps> = ({ onNavigateToTab }) => {
           {metrics?.per_class_bias && metrics.per_class_bias.length > 0 && (
             <div className="lab2-card">
               <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-                <h4 className="text-sm font-semibold text-primary">
-                  Per-Class Classification Report (76 Classes)
-                </h4>
+                <div>
+                  <h3 className="text-sm font-bold text-primary">
+                    Per-Class Classification Report (76 Classes)
+                  </h3>
+                  <span className="text-xs text-secondary">Search precision, recall, and support per word class</span>
+                </div>
                 <input 
                   type="text" 
                   placeholder="Filter by class name..."
@@ -942,7 +1101,7 @@ export const GanCnnPage: React.FC<GanCnnPageProps> = ({ onNavigateToTab }) => {
                 />
               </div>
 
-              <div className="lab2-metrics-table-wrap max-h-80 overflow-y-auto">
+              <div className="lab2-table-wrap max-h-80 overflow-y-auto">
                 <table className="lab2-table">
                   <thead>
                     <tr>
@@ -955,10 +1114,10 @@ export const GanCnnPage: React.FC<GanCnnPageProps> = ({ onNavigateToTab }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredBias.slice(0, 50).map((r, i) => (
+                    {filteredBias.slice(0, 76).map((r, i) => (
                       <tr key={i}>
                         <td className="font-semibold text-xs text-primary">{r.Model}</td>
-                        <td className="font-bold text-violet text-xs">{r.Class}</td>
+                        <td className="font-bold text-violet text-xs capitalize">{r.Class}</td>
                         <td className="font-mono text-xs">{(r.Precision * 100).toFixed(1)}%</td>
                         <td className="font-mono text-xs">{(r.Recall * 100).toFixed(1)}%</td>
                         <td className="font-mono text-xs font-bold text-emerald">{(r.F1 * 100).toFixed(1)}%</td>
@@ -973,53 +1132,282 @@ export const GanCnnPage: React.FC<GanCnnPageProps> = ({ onNavigateToTab }) => {
         </section>
       )}
 
-      {/* SECTION F: Cross-Model Comparison */}
-      {activeSection === 'comparison' && (
-        <section className="lab2-section-content" aria-labelledby="heading-section-f">
+      {/* SECTION E: Scientific Findings & Academic Discussion */}
+      {activeSection === 'findings' && (
+        <section className="lab2-section-content" aria-labelledby="heading-section-e">
           <div className="lab2-section-header">
-            <h3 id="heading-section-f" className="lab2-section-title">
-              <Table size={18} className="text-brand" />
-              <span>Section F: Tri-Model Lab Eval 2 Comparison Matrix</span>
-            </h3>
-            <span className="badge badge-brand">Live Progress</span>
+            <div>
+              <h2 id="heading-section-e" className="lab2-section-title">
+                <HelpCircle size={20} className="text-brand" />
+                <span>Section E: Scientific Findings & Academic Discussion</span>
+              </h2>
+              <p className="lab2-section-subtitle">
+                Rigorous empirical interpretation of the clean accuracy gap versus perturbation resilience trade-off.
+              </p>
+            </div>
+            <span className="badge badge-brand text-xs">Academic Analysis</span>
           </div>
 
-          <div className="lab2-card mb-4">
-            <h4 className="text-sm font-semibold text-primary mb-2">Lab Evaluation 2 Model Comparison Status</h4>
-            <p className="text-xs text-secondary mb-4 leading-relaxed">
-              Comparison across all three deep-learning models evaluated with GAN augmentation. 
-              GAN + CNN is fully populated with empirical Kaggle results, while the other two models await their respective artifacts.
-            </p>
+          <div className="lab2-findings-panel mb-6">
+            <div className="lab2-finding-card border-brand/30">
+              <div className="lab2-finding-header">
+                <div className="lab2-mini-icon-badge brand">
+                  <TrendingUp size={18} />
+                </div>
+                <h3 className="lab2-finding-title">1. Clean Accuracy Gap Analysis</h3>
+              </div>
+              <p className="text-sm text-secondary leading-relaxed mb-3">
+                On the held-out test set of 900 authentic real video frames, the unaugmented <strong>Baseline CNN (49.89%)</strong> substantially 
+                outperformed the <strong>DCGAN-Augmented CNN (29.00%)</strong> by an absolute margin of 20.89%.
+              </p>
+              <div className="lab2-finding-note">
+                <strong>Underlying Mechanism:</strong> Rescaling sign video frames to 64×64 pixels strips fine-grained finger articulation edges. 
+                At this resolution, the DCGAN synthesized blurred hand-shape blobs that confused clean decision boundaries rather than functioning as an invariant regularizer.
+              </div>
+            </div>
 
-            <div className="lab2-metrics-table-wrap">
+            <div className="lab2-finding-card border-amber/30">
+              <div className="lab2-finding-header">
+                <div className="lab2-mini-icon-badge amber">
+                  <Activity size={18} />
+                </div>
+                <h3 className="lab2-finding-title">2. Noise Robustness Trade-off</h3>
+              </div>
+              <p className="text-sm text-secondary leading-relaxed mb-3">
+                Under deliberate Gaussian noise injections ($\sigma = 0.10$ and $\sigma = 0.20$), the DCGAN-augmented model demonstrated 
+                superior accuracy retention. At $\sigma = 0.10$, the augmented network achieved <strong>18.11% accuracy</strong>, exceeding the baseline's collapsed <strong>15.33%</strong>.
+              </p>
+              <div className="lab2-finding-note">
+                <strong>Empirical Principle:</strong> Generative augmentation forces the convolutional filters to learn broader, noise-tolerant spatial features, 
+                proving beneficial in noisy environments despite lower peak clean-data accuracy.
+              </div>
+            </div>
+
+            <div className="lab2-finding-card border-violet/30">
+              <div className="lab2-finding-header">
+                <div className="lab2-mini-icon-badge violet">
+                  <Cpu size={18} />
+                </div>
+                <h3 className="lab2-finding-title">3. Recommendations for ISL Recognition</h3>
+              </div>
+              <p className="text-sm text-secondary leading-relaxed mb-3">
+                Static 2D frame augmentation is insufficient for expressive gesture recognition. Modern Indian Sign Language recognition achieves significantly higher performance using:
+              </p>
+              <ul className="text-xs text-secondary space-y-1.5 list-disc pl-5">
+                <li>Higher resolution backbones (112×112) with inverted residual bottlenecks (e.g. MobileNetV2).</li>
+                <li>Temporal recurrent or 3D convolutional models (e.g. CNN-LSTM) to capture inter-frame motion trajectories.</li>
+                <li>Keypoint landmark extraction (MediaPipe) over raw low-resolution pixel grids.</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* SECTION F: Interactive Model Prediction */}
+      {activeSection === 'prediction' && (
+        <section className="lab2-section-content" aria-labelledby="heading-section-f">
+          <div className="lab2-section-header">
+            <div>
+              <h2 id="heading-section-f" className="lab2-section-title">
+                <Upload size={20} className="text-brand" />
+                <span>Section F: Interactive Frame Inference</span>
+              </h2>
+              <p className="lab2-section-subtitle">
+                Upload a single Indian Sign Language frame to run simultaneous dual inference through both trained Keras checkpoints.
+              </p>
+            </div>
+            <span className="badge badge-brand text-xs">Dual Inference Pipeline</span>
+          </div>
+
+          <div className="lab2-card mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+              {/* Upload Input Area */}
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-2">
+                  Select an Isolated Sign Image Frame:
+                </label>
+                <div className="lab2-file-dropzone">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    className="lab2-file-input"
+                    id="lab2-file-upload"
+                  />
+                  <label htmlFor="lab2-file-upload" className="lab2-file-label">
+                    <Upload size={24} className="text-brand mb-1" />
+                    <span className="text-xs font-semibold text-primary">Click to select an image frame</span>
+                    <span className="text-[11px] text-secondary">Supported: PNG, JPEG (auto-cropped to 64×64 RGB)</span>
+                  </label>
+                </div>
+
+                {selectedFile && (
+                  <div className="mt-3 flex items-center justify-between text-xs p-2 rounded bg-surface/50 border border-border/40">
+                    <span className="truncate max-w-[200px] text-primary">{selectedFile.name}</span>
+                    <span className="text-secondary font-mono">{(selectedFile.size / 1024).toFixed(1)} KB</span>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleRunPrediction}
+                  disabled={!selectedFile || isPredicting}
+                  className="btn btn-primary w-full mt-4 text-xs font-semibold flex items-center justify-center gap-2"
+                >
+                  {isPredicting ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      <span>Running Dual Inference...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={14} />
+                      <span>Classify Frame</span>
+                    </>
+                  )}
+                </button>
+
+                {predictError && (
+                  <div className="lab2-alert-error mt-3">
+                    <AlertTriangle size={15} />
+                    <span>{predictError}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Image Preview Area */}
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-2">
+                  Input Frame Preprocessing Preview:
+                </label>
+                <div className="lab2-preview-box">
+                  {previewUrl ? (
+                    <img 
+                      src={previewUrl} 
+                      alt="Sign Frame Preview" 
+                      className="lab2-preview-img"
+                    />
+                  ) : (
+                    <div className="lab2-preview-placeholder">
+                      <ImageIcon size={32} className="text-secondary/40 mb-2" />
+                      <span className="text-xs text-secondary">No frame selected yet</span>
+                    </div>
+                  )}
+                </div>
+                <div className="text-[11px] text-secondary mt-2 flex items-center gap-1">
+                  <Info size={12} className="text-brand" />
+                  <span>Preprocessing: Bilinear resize to 64×64 RGB with [-1.0, 1.0] normalization.</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Inference Results Cards */}
+            {predictionResult && (
+              <div className="mt-6 pt-6 border-t border-border/40">
+                <h3 className="text-sm font-bold text-primary mb-3">Model Prediction Outputs:</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Baseline CNN Result */}
+                  {predictionResult.baseline && (
+                    <div className="lab2-card border-brand/30 bg-brand/5">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="badge badge-brand text-xs">Baseline CNN (Real Only)</span>
+                        <span className="text-xs font-mono text-secondary">
+                          {predictionResult.baseline.latency_ms} ms
+                        </span>
+                      </div>
+                      <div className="text-xl font-bold text-primary mb-1 capitalize">
+                        {predictionResult.baseline.predicted_class}
+                      </div>
+                      <div className="text-xs text-emerald font-semibold mb-3">
+                        Confidence: {(predictionResult.baseline.confidence * 100).toFixed(1)}%
+                      </div>
+
+                      <div className="text-xs text-secondary font-semibold mb-1">Top 5 Softmax Probabilities:</div>
+                      <div className="space-y-1">
+                        {predictionResult.baseline.top5.map((p, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-xs py-0.5">
+                            <span className="text-primary capitalize">{p.class_name}</span>
+                            <span className="font-mono text-secondary">{(p.confidence * 100).toFixed(1)}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* GAN Augmented Result */}
+                  {predictionResult.gan_augmented && (
+                    <div className="lab2-card border-violet/30 bg-violet/5">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="badge badge-violet text-xs">DCGAN + CNN (Augmented)</span>
+                        <span className="text-xs font-mono text-secondary">
+                          {predictionResult.gan_augmented.latency_ms} ms
+                        </span>
+                      </div>
+                      <div className="text-xl font-bold text-primary mb-1 capitalize">
+                        {predictionResult.gan_augmented.predicted_class}
+                      </div>
+                      <div className="text-xs text-amber font-semibold mb-3">
+                        Confidence: {(predictionResult.gan_augmented.confidence * 100).toFixed(1)}%
+                      </div>
+
+                      <div className="text-xs text-secondary font-semibold mb-1">Top 5 Softmax Probabilities:</div>
+                      <div className="space-y-1">
+                        {predictionResult.gan_augmented.top5.map((p, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-xs py-0.5">
+                            <span className="text-primary capitalize">{p.class_name}</span>
+                            <span className="font-mono text-secondary">{(p.confidence * 100).toFixed(1)}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* SECTION G: Cross-Model Comparison Matrix */}
+      {activeSection === 'comparison' && (
+        <section className="lab2-section-content" aria-labelledby="heading-section-g">
+          <div className="lab2-section-header">
+            <div>
+              <h2 id="heading-section-g" className="lab2-section-title">
+                <Table size={20} className="text-brand" />
+                <span>Section G: Tri-Model Lab Eval 2 Comparison Matrix</span>
+              </h2>
+              <p className="lab2-section-subtitle">
+                Systematic overview of all three planned generative architectures in Lab Evaluation 2.
+              </p>
+            </div>
+            <span className="badge badge-brand text-xs">Comparative Study</span>
+          </div>
+
+          <div className="lab2-card mb-6">
+            <div className="lab2-table-wrap">
               <table className="lab2-table">
                 <thead>
                   <tr>
-                    <th>Model</th>
-                    <th>Modality</th>
-                    <th>Augmentation Protocol</th>
-                    <th>Clean Accuracy (Baseline)</th>
-                    <th>Clean Accuracy (Augmented)</th>
+                    <th>Experiment Architecture</th>
+                    <th>Model Category</th>
+                    <th>Generative Method</th>
+                    <th>Baseline Accuracy</th>
+                    <th>Augmented Accuracy</th>
                     <th>Integration Status</th>
                     <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="lab2-table-row-active">
-                    <td className="font-bold text-primary">1. GAN + CNN</td>
-                    <td>2D Spatial Convolutions (64×64)</td>
-                    <td>Class-conditioned DCGAN (50% synthetic)</td>
+                  <tr className="lab2-table-active-row">
+                    <td className="font-bold text-primary">1. GAN + Custom 2D CNN</td>
+                    <td>Static Spatial 2D CNN</td>
+                    <td>Class-Conditioned DCGAN (100 Epochs)</td>
                     <td className="font-mono text-emerald font-bold">49.89%</td>
                     <td className="font-mono text-amber font-bold">29.00%</td>
-                    <td><span className="badge badge-success">Integrated (Phase 2)</span></td>
+                    <td><span className="badge badge-success">Verified Run</span></td>
                     <td>
-                      <button
-                        type="button"
-                        className="btn-table-action active"
-                        onClick={() => setActiveSection('overview')}
-                      >
-                        Inspect Details
-                      </button>
+                      <span className="text-xs text-secondary font-semibold">Active Tab</span>
                     </td>
                   </tr>
                   <tr>
@@ -1028,15 +1416,16 @@ export const GanCnnPage: React.FC<GanCnnPageProps> = ({ onNavigateToTab }) => {
                     <td>Synthetic sequence augmentation</td>
                     <td className="font-mono text-secondary">—</td>
                     <td className="font-mono text-secondary">—</td>
-                    <td><span className="badge badge-amber">Awaiting Model Files</span></td>
+                    <td><span className="badge badge-amber">Awaiting Artifacts</span></td>
                     <td>
                       {onNavigateToTab && (
                         <button
                           type="button"
-                          className="btn-table-action"
+                          className="btn btn-secondary btn-sm text-xs"
                           onClick={() => onNavigateToTab('gan-cnn-lstm')}
                         >
-                          View Placeholder <ArrowRight size={12} className="inline ml-1" />
+                          <span>Inspect</span>
+                          <ArrowRight size={12} />
                         </button>
                       )}
                     </td>
@@ -1047,29 +1436,22 @@ export const GanCnnPage: React.FC<GanCnnPageProps> = ({ onNavigateToTab }) => {
                     <td>Class-conditioned frame synthesis</td>
                     <td className="font-mono text-secondary">—</td>
                     <td className="font-mono text-secondary">—</td>
-                    <td><span className="badge badge-amber">Awaiting Model Files</span></td>
+                    <td><span className="badge badge-amber">Awaiting Artifacts</span></td>
                     <td>
                       {onNavigateToTab && (
                         <button
                           type="button"
-                          className="btn-table-action"
+                          className="btn btn-secondary btn-sm text-xs"
                           onClick={() => onNavigateToTab('gan-mobilenetv2')}
                         >
-                          View Placeholder <ArrowRight size={12} className="inline ml-1" />
+                          <span>Inspect</span>
+                          <ArrowRight size={12} />
                         </button>
                       )}
                     </td>
                   </tr>
                 </tbody>
               </table>
-            </div>
-          </div>
-
-          <div className="lab2-info-banner">
-            <CheckCircle size={18} className="text-emerald shrink-0" />
-            <div className="text-xs text-secondary leading-relaxed">
-              <strong>Rigorous Scientific Standard:</strong> The main-pipeline 76-class MobileNetV2, Custom CNN, and CNN-LSTM are completely separate and preserved. 
-              The two pending tabs display clean placeholders without substitution.
             </div>
           </div>
         </section>
