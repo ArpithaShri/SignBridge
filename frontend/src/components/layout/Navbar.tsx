@@ -65,6 +65,18 @@ export const Navbar = ({ currentTab, onSelectTab, backendConnected }: NavbarProp
             <BarChart3 size={16} />
             <span>Model Comparison</span>
           </button>
+
+          <button
+            id="nav-tab-lab-eval-2"
+            type="button"
+            className={`nav-tab-button ${currentTab === 'lab-eval-2' ? 'active' : ''}`}
+            onClick={() => onSelectTab('lab-eval-2')}
+            aria-selected={currentTab === 'lab-eval-2'}
+          >
+            <Sparkles size={16} className="text-violet" />
+            <span>Lab Eval 2</span>
+            <span className="badge badge-brand text-[10px] ml-1">Research</span>
+          </button>
         </nav>
 
         <div className="nav-status-group">

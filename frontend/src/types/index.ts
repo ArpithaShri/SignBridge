@@ -1,4 +1,4 @@
-export type NavigationTab = 'dashboard' | 'recognition' | 'comparison';
+export type NavigationTab = 'dashboard' | 'recognition' | 'comparison' | 'lab-eval-2';
 
 export interface ModelMetrics {
   id: 'custom-cnn' | 'mobilenetv2' | 'cnn-lstm';

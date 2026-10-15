@@ -23,6 +23,7 @@ from app.config import (
 )
 from app.preprocessing import preprocess_for_model
 from app.inference import engine
+from app.lab_eval2.router import router as lab_eval2_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -66,6 +67,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount Lab Evaluation 2 module router
+app.include_router(lab_eval2_router)
 
 
 @app.get("/")
