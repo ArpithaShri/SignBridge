@@ -2654,3 +2654,258 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+/* -------------------------------------------------------------
+   Interactive Video Testing & Frame Gallery Styles
+   ------------------------------------------------------------- */
+.lab2-video-player-wrap {
+  width: 100%;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  background: #000;
+  display: flex;
+  flex-direction: column;
+}
+
+.lab2-video-player {
+  width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+}
+
+.lab2-video-meta-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.85rem;
+  background: var(--bg-tertiary);
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.lab2-video-frame-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  max-height: 290px;
+  overflow-y: auto;
+  padding: 0.25rem;
+}
+
+.lab2-frame-thumb-card {
+  position: relative;
+  background: var(--bg-card);
+  border: 2px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  flex-direction: column;
+}
+
+.lab2-frame-thumb-card:hover {
+  border-color: var(--brand-500);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.lab2-frame-thumb-card.selected {
+  border-color: var(--brand-500);
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.lab2-frame-thumb-img-wrap {
+  width: 100%;
+  aspect-ratio: 1;
+  background: #000;
+  overflow: hidden;
+  position: relative;
+}
+
+.lab2-frame-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.lab2-frame-thumb-badge {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #fff;
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  padding: 0.15rem 0.35rem;
+  border-radius: var(--radius-xs);
+}
+
+.lab2-frame-checkbox {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  cursor: pointer;
+}
+
+.lab2-frame-footer-label {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-tertiary);
+}
+
+.lab2-pill-btn {
+  padding: 0.35rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid var(--border-medium);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.lab2-pill-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--brand-500);
+}
+
+.lab2-pill-btn.active {
+  background: var(--brand-500);
+  color: #fff;
+  border-color: var(--brand-500);
+}
+
+.lab2-consensus-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.lab2-consensus-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+}
+
+.lab2-match-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--accent-emerald);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.lab2-diverge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--accent-amber);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+/* =========================================================================
+   Phase 2: CNN-LSTM Spatio-Temporal Sequence Reel & Generator Styles
+   ========================================================================= */
+
+.lab2-sequence-reel-scroll {
+  display: flex;
+  gap: 0.6rem;
+  overflow-x: auto;
+  padding: 0.75rem 0.25rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-medium) transparent;
+}
+
+.lab2-sequence-reel-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.lab2-sequence-reel-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+  border-radius: 9999px;
+}
+
+.lab2-sequence-frame-card {
+  flex: 0 0 110px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: transform var(--transition-fast), border-color var(--transition-fast);
+}
+
+.lab2-sequence-frame-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--brand-500);
+}
+
+.lab2-sequence-frame-card img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  background: #000;
+  display: block;
+}
+
+.lab2-sequence-frame-footer {
+  padding: 0.25rem 0.4rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--text-tertiary);
+  background: var(--bg-tertiary);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.lab2-generator-preview-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border-medium);
+  background: var(--bg-tertiary);
+  min-height: 220px;
+}
+
+.lab2-generator-canvas-img {
+  width: 160px;
+  height: 160px;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--border-medium);
+  box-shadow: var(--shadow-md);
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  background: #000;
+}
+
+

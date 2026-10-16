@@ -260,6 +260,224 @@ class GanCnnEngine:
 
         return results
 
+    def extract_video_frames_detailed(
+        self,
+        video_bytes: bytes,
+        strategy: str = "uniform",
+        max_frames: int = 5
+    ) -> Dict[str, Any]:
+        """
+        Extracts frames from an uploaded video with thumbnails and timestamps.
+        Supports 'uniform' (evenly spaced) and 'interval' (fixed step).
+        Limits max_frames to reasonable bounds (1..30).
+        """
+        max_frames = max(1, min(max_frames, 30))
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+            tmp.write(video_bytes)
+            tmp_path = tmp.name
+
+        try:
+            cap = cv2.VideoCapture(tmp_path)
+            if not cap.isOpened():
+                raise ValueError("Could not decode video. Please ensure a valid MP4/WebM/AVI clip.")
+
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = float(cap.get(cv2.CAP_PROP_FPS)) or 25.0
+            duration_sec = frame_count / fps if fps > 0 else 0.0
+
+            if frame_count <= 0:
+                raise ValueError("Video contains 0 readable frames.")
+
+            if strategy == "interval":
+                # Sample at fixed interval across the video
+                step = max(1, frame_count // max_frames)
+                indices = list(range(0, frame_count, step))[:max_frames]
+            else:  # uniform
+                indices = np.linspace(0, frame_count - 1, max_frames, dtype=int).tolist()
+
+            unique_indices = sorted(list(dict.fromkeys(indices)))
+            extracted_frames = []
+
+            for seq_idx, f_idx in enumerate(unique_indices):
+                cap.set(cv2.CAP_PROP_POS_FRAMES, int(f_idx))
+                ok, frame = cap.read()
+                if not ok or frame is None:
+                    continue
+
+                timestamp_sec = round(f_idx / fps, 2)
+                timestamp_fmt = f"{timestamp_sec:.2f}s"
+
+                # Generate thumbnail for UI preview (compressed JPEG)
+                thumb_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                # Resize for thumbnail display (e.g. 160x160)
+                thumb_display = cv2.resize(thumb_rgb, (160, 160), interpolation=cv2.INTER_AREA)
+                thumb_bgr = cv2.cvtColor(thumb_display, cv2.COLOR_RGB2BGR)
+                ok_enc, buf = cv2.imencode(".jpg", thumb_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+                thumb_b64 = f"data:image/jpeg;base64,{base64.b64encode(buf.tobytes()).decode('utf-8')}" if ok_enc else ""
+
+                # Normalized preprocessed frame for 64x64 CNN model
+                resized = cv2.resize(thumb_rgb, (IMAGE_SIZE, IMAGE_SIZE), interpolation=cv2.INTER_AREA)
+                norm_tensor = resized.astype(np.float32) / 127.5 - 1.0
+
+                extracted_frames.append({
+                    "frame_index": seq_idx,
+                    "video_frame_num": int(f_idx),
+                    "timestamp_sec": timestamp_sec,
+                    "timestamp_formatted": timestamp_fmt,
+                    "thumbnail": thumb_b64,
+                    "_tensor": norm_tensor
+                })
+
+            cap.release()
+
+            if not extracted_frames:
+                raise ValueError("Could not extract any valid video frames.")
+
+            return {
+                "metadata": {
+                    "total_frames": frame_count,
+                    "fps": round(fps, 2),
+                    "duration_seconds": round(duration_sec, 2),
+                    "sampled_count": len(extracted_frames),
+                    "strategy": strategy,
+                },
+                "frames": extracted_frames
+            }
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
+    def predict_video_frame_level(
+        self,
+        video_bytes: bytes,
+        strategy: str = "uniform",
+        max_frames: int = 5,
+        selected_indices: Optional[List[int]] = None
+    ) -> Dict[str, Any]:
+        """
+        Runs frame-level inference of both Baseline CNN and DCGAN-Augmented CNN
+        on all or user-selected extracted frames.
+        Returns per-frame comparison, agreement indicators, and aggregated distribution.
+        """
+        self.load_models()
+        extracted = self.extract_video_frames_detailed(video_bytes, strategy=strategy, max_frames=max_frames)
+        all_frames = extracted["frames"]
+        metadata = extracted["metadata"]
+
+        if selected_indices is not None and len(selected_indices) > 0:
+            target_frames = [f for f in all_frames if f["frame_index"] in selected_indices]
+            if not target_frames:
+                target_frames = all_frames
+        else:
+            target_frames = all_frames
+
+        # Run inference on target frames
+        X = np.asarray([f["_tensor"] for f in target_frames], dtype=np.float32)
+
+        # Baseline CNN predictions
+        t0 = time.perf_counter()
+        if self._baseline_model is not None:
+            baseline_probs = self._baseline_model.predict(X, verbose=0)
+        else:
+            baseline_probs = np.zeros((len(X), NUM_CLASSES), dtype=np.float32)
+        base_elapsed_ms = (time.perf_counter() - t0) * 1000
+
+        # Augmented CNN predictions
+        t1 = time.perf_counter()
+        if self._augmented_model is not None:
+            aug_probs = self._augmented_model.predict(X, verbose=0)
+        else:
+            aug_probs = np.zeros((len(X), NUM_CLASSES), dtype=np.float32)
+        aug_elapsed_ms = (time.perf_counter() - t1) * 1000
+
+        frame_results = []
+        agreement_count = 0
+        baseline_votes: Dict[str, int] = {}
+        augmented_votes: Dict[str, int] = {}
+
+        for i, f in enumerate(target_frames):
+            bp = baseline_probs[i]
+            ap = aug_probs[i]
+
+            b_idx = int(np.argmax(bp))
+            b_conf = float(bp[b_idx])
+            b_class = self._class_mapping.get(b_idx, f"class_{b_idx}")
+            baseline_votes[b_class] = baseline_votes.get(b_class, 0) + 1
+
+            a_idx = int(np.argmax(ap))
+            a_conf = float(ap[a_idx])
+            a_class = self._class_mapping.get(a_idx, f"class_{a_idx}")
+            augmented_votes[a_class] = augmented_votes.get(a_class, 0) + 1
+
+            agreement = (b_class == a_class)
+            if agreement:
+                agreement_count += 1
+
+            # Top 3 per model
+            b_top3_idx = np.argsort(bp)[::-1][:3]
+            b_top3 = [
+                {"class_name": self._class_mapping.get(int(idx), f"class_{idx}"), "confidence": float(bp[idx])}
+                for idx in b_top3_idx
+            ]
+
+            a_top3_idx = np.argsort(ap)[::-1][:3]
+            a_top3 = [
+                {"class_name": self._class_mapping.get(int(idx), f"class_{idx}"), "confidence": float(ap[idx])}
+                for idx in a_top3_idx
+            ]
+
+            frame_results.append({
+                "frame_index": f["frame_index"],
+                "video_frame_num": f["video_frame_num"],
+                "timestamp_sec": f["timestamp_sec"],
+                "timestamp_formatted": f["timestamp_formatted"],
+                "thumbnail": f["thumbnail"],
+                "agreement": agreement,
+                "baseline": {
+                    "predicted_class": b_class,
+                    "confidence": b_conf,
+                    "top3": b_top3
+                },
+                "gan_augmented": {
+                    "predicted_class": a_class,
+                    "confidence": a_conf,
+                    "top3": a_top3
+                }
+            })
+
+        total_tested = len(target_frames)
+        agreement_rate = (agreement_count / total_tested) * 100 if total_tested > 0 else 0.0
+
+        # Consensus winner by frequency
+        b_consensus = max(baseline_votes.items(), key=lambda x: x[1])[0] if baseline_votes else "none"
+        a_consensus = max(augmented_votes.items(), key=lambda x: x[1])[0] if augmented_votes else "none"
+
+        return {
+            "metadata": metadata,
+            "total_frames_evaluated": total_tested,
+            "agreement_count": agreement_count,
+            "agreement_rate_percent": round(agreement_rate, 1),
+            "frame_results": frame_results,
+            "aggregated_summary": {
+                "baseline_consensus": b_consensus,
+                "baseline_distribution": baseline_votes,
+                "augmented_consensus": a_consensus,
+                "augmented_distribution": augmented_votes,
+                "consensus_agreement": (b_consensus == a_consensus),
+                "disclaimer": (
+                    "Frame-level aggregated summary across independently classified frames. "
+                    "Note: This reflects static frame classification distributions, not a validated end-to-end spatio-temporal video model."
+                )
+            },
+            "latencies": {
+                "baseline_total_ms": round(base_elapsed_ms, 2),
+                "augmented_total_ms": round(aug_elapsed_ms, 2),
+                "per_frame_baseline_ms": round(base_elapsed_ms / total_tested, 2) if total_tested else 0,
+                "per_frame_augmented_ms": round(aug_elapsed_ms / total_tested, 2) if total_tested else 0
+            }
+        }
+
+
     def generate(self, class_identifier: Any, seed: Optional[int] = None) -> Dict[str, Any]:
         """
         Generates a 64x64 RGB synthetic image conditioned on the requested class using the trained DCGAN generator.

@@ -4,6 +4,16 @@ export const LAB_EVAL2_CONFIG = {
   ENDPOINT_METRICS: '/api/v1/lab-eval2/metrics',
   ENDPOINT_PREDICT: '/api/v1/lab-eval2/predict',
   ENDPOINT_GENERATE: '/api/v1/lab-eval2/generate',
+  ENDPOINT_EXTRACT_FRAMES: '/api/v1/lab-eval2/extract-frames',
+  ENDPOINT_VIDEO_INFER: '/api/v1/lab-eval2/video-infer',
+  ENDPOINT_CNN_LSTM_METADATA: '/api/v1/lab-eval2/cnn-lstm/metadata',
+  ENDPOINT_CNN_LSTM_PREDICT_VIDEO: '/api/v1/lab-eval2/cnn-lstm/predict-video',
+  ENDPOINT_CNN_LSTM_GENERATE: '/api/v1/lab-eval2/cnn-lstm/generate',
+  ENDPOINT_CNN_LSTM_HISTORY: '/api/v1/lab-eval2/cnn-lstm/history',
+  ENDPOINT_MOBILENETV2_METADATA: '/api/v1/lab-eval2/mobilenetv2/metadata',
+  ENDPOINT_MOBILENETV2_PREDICT_IMAGE: '/api/v1/lab-eval2/mobilenetv2/predict-image',
+  ENDPOINT_MOBILENETV2_PREDICT_VIDEO: '/api/v1/lab-eval2/mobilenetv2/predict-video',
+  ENDPOINT_MOBILENETV2_GENERATE: '/api/v1/lab-eval2/mobilenetv2/generate',
 };
 
 export interface LabEval2Overview {
@@ -314,3 +324,545 @@ export async function generateLabEval2Image(
 
   return await res.json();
 }
+
+// -------------------------------------------------------------
+// Video Frame Extraction & Dual Inference Interfaces
+// -------------------------------------------------------------
+
+export interface ExtractedFrameItem {
+  frame_index: number;
+  video_frame_num: number;
+  timestamp_sec: number;
+  timestamp_formatted: string;
+  thumbnail: string;
+}
+
+export interface VideoExtractionResponse {
+  success: boolean;
+  filename: string;
+  metadata: {
+    total_frames: number;
+    fps: number;
+    duration_seconds: number;
+    sampled_count: number;
+    strategy: string;
+  };
+  frames: ExtractedFrameItem[];
+}
+
+export interface FramePredictionItem {
+  frame_index: number;
+  video_frame_num: number;
+  timestamp_sec: number;
+  timestamp_formatted: string;
+  thumbnail: string;
+  agreement: boolean;
+  baseline: {
+    predicted_class: string;
+    confidence: number;
+    top3: Array<{ class_name: string; confidence: number }>;
+  };
+  gan_augmented: {
+    predicted_class: string;
+    confidence: number;
+    top3: Array<{ class_name: string; confidence: number }>;
+  };
+}
+
+export interface VideoDualInferResponse {
+  success: boolean;
+  filename: string;
+  metadata: {
+    total_frames: number;
+    fps: number;
+    duration_seconds: number;
+    sampled_count: number;
+    strategy: string;
+  };
+  total_frames_evaluated: number;
+  agreement_count: number;
+  agreement_rate_percent: number;
+  frame_results: FramePredictionItem[];
+  aggregated_summary: {
+    baseline_consensus: string;
+    baseline_distribution: Record<string, number>;
+    augmented_consensus: string;
+    augmented_distribution: Record<string, number>;
+    consensus_agreement: boolean;
+    disclaimer: string;
+  };
+  latencies: {
+    baseline_total_ms: number;
+    augmented_total_ms: number;
+    per_frame_baseline_ms: number;
+    per_frame_augmented_ms: number;
+  };
+}
+
+export async function extractVideoFrames(
+  videoFile: File,
+  strategy: 'uniform' | 'interval' = 'uniform',
+  maxFrames: number = 5
+): Promise<VideoExtractionResponse> {
+  const formData = new FormData();
+  formData.append('video', videoFile);
+  formData.append('strategy', strategy);
+  formData.append('max_frames', maxFrames.toString());
+
+  const res = await fetch(`${LAB_EVAL2_CONFIG.BASE_URL}${LAB_EVAL2_CONFIG.ENDPOINT_EXTRACT_FRAMES}`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({ detail: `HTTP error ${res.status}` }));
+    throw new Error(errData.detail || 'Frame extraction failed');
+  }
+
+  return await res.json();
+}
+
+export async function predictVideoFramesDual(
+  videoFile: File,
+  strategy: 'uniform' | 'interval' = 'uniform',
+  maxFrames: number = 5,
+  selectedIndices?: number[]
+): Promise<VideoDualInferResponse> {
+  const formData = new FormData();
+  formData.append('video', videoFile);
+  formData.append('strategy', strategy);
+  formData.append('max_frames', maxFrames.toString());
+  if (selectedIndices && selectedIndices.length > 0) {
+    formData.append('selected_indices', JSON.stringify(selectedIndices));
+  }
+
+  const res = await fetch(`${LAB_EVAL2_CONFIG.BASE_URL}${LAB_EVAL2_CONFIG.ENDPOINT_VIDEO_INFER}`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({ detail: `HTTP error ${res.status}` }));
+    throw new Error(errData.detail || 'Video frame inference failed');
+  }
+
+  return await res.json();
+}
+
+// -------------------------------------------------------------
+// GAN + CNN-LSTM Interfaces and API Client
+// -------------------------------------------------------------
+
+export interface GanCnnLstmOverview {
+  title: string;
+  experiment: string;
+  classes: string[];
+  num_classes: number;
+  image_size: string;
+  sequence_frames: number;
+  latent_dim: number;
+  training_images: number;
+  test_videos: number;
+  models: {
+    baseline_cnn_lstm: {
+      name: string;
+      architecture: string;
+      training_set: string;
+      clean_accuracy: number;
+      macro_f1: number;
+      weighted_f1: number;
+      status: string;
+    };
+    conditional_dcgan: {
+      name: string;
+      architecture: string;
+      training_set: string;
+      saved_epochs: number;
+      status: string;
+    };
+    gan_augmented_cnn_lstm: {
+      name: string;
+      architecture: string;
+      status: string;
+      clean_accuracy: number | null;
+      note: string;
+    };
+  };
+  scientific_findings: {
+    headline: string;
+    clean_accuracy_baseline: number;
+    summary: string;
+  };
+}
+
+export interface GanCnnLstmMetadataResponse {
+  overview: GanCnnLstmOverview;
+  baseline_summary: {
+    model: string;
+    test_videos_expected: number;
+    test_videos_evaluated: number;
+    test_accuracy: number;
+    test_accuracy_percent: number;
+    macro_f1: number;
+    weighted_f1: number;
+  };
+  model_info: {
+    model_path: string;
+    input_shape: string;
+    output_shape: string;
+    total_parameters: number;
+  };
+  pixel_stats: {
+    sample_grids_analyzed: number;
+    epochs_analyzed: number[];
+    metric_note: string;
+  };
+  sample_grid_stats: Array<{
+    Epoch: number;
+    GridWidth: number;
+    GridHeight: number;
+    PixelMean: number;
+    PixelStd: number;
+    UniquePixelValues: number;
+  }>;
+  classification_report: Record<string, {
+    precision: number;
+    recall: number;
+    'f1-score': number;
+    support: number;
+  }>;
+  engine_status: {
+    baseline_lstm_loaded: boolean;
+    augmented_lstm_loaded: boolean;
+    generator_loaded: boolean;
+    classes_count: number;
+    artifacts_dir_exists: boolean;
+  };
+}
+
+export interface CnnLstmVideoPredictResponse {
+  success: boolean;
+  filename: string;
+  metadata: {
+    total_frames: number;
+    fps: number;
+    duration_seconds: number;
+    sequence_frames: number;
+    frame_resolution: string;
+  };
+  preview_thumbnails: Array<{
+    sequence_step: number;
+    frame_num: number;
+    timestamp_sec: number;
+    thumbnail: string;
+  }>;
+  baseline_cnn_lstm: {
+    status: string;
+    model_name: string;
+    architecture: string;
+    input_shape: string;
+    clean_test_accuracy: number;
+    predicted_class: string;
+    predicted_index: number;
+    confidence: number;
+    top5: Array<{ class_index: number; class_name: string; confidence: number }>;
+    latency_ms: number;
+  };
+  gan_augmented_cnn_lstm: {
+    status: string;
+    model_name: string;
+    message: string;
+    is_available: boolean;
+    predicted_class?: string;
+    confidence?: number;
+    latency_ms?: number;
+  };
+}
+
+export async function fetchCnnLstmMetadata(): Promise<GanCnnLstmMetadataResponse> {
+  const res = await fetch(`${LAB_EVAL2_CONFIG.BASE_URL}${LAB_EVAL2_CONFIG.ENDPOINT_CNN_LSTM_METADATA}`);
+  if (!res.ok) {
+    throw new Error(`HTTP error ${res.status} fetching CNN-LSTM metadata`);
+  }
+  return await res.json();
+}
+
+export async function predictCnnLstmVideo(videoFile: File): Promise<CnnLstmVideoPredictResponse> {
+  const formData = new FormData();
+  formData.append('video', videoFile);
+
+  const res = await fetch(`${LAB_EVAL2_CONFIG.BASE_URL}${LAB_EVAL2_CONFIG.ENDPOINT_CNN_LSTM_PREDICT_VIDEO}`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({ detail: `HTTP error ${res.status}` }));
+    throw new Error(errData.detail || 'CNN-LSTM prediction failed');
+  }
+
+  return await res.json();
+}
+
+export async function generateCnnLstmImage(
+  classIdentifier: string | number,
+  seed?: number
+): Promise<LabEval2GenerateResponse> {
+  const res = await fetch(`${LAB_EVAL2_CONFIG.BASE_URL}${LAB_EVAL2_CONFIG.ENDPOINT_CNN_LSTM_GENERATE}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      class_identifier: classIdentifier,
+      seed: seed !== undefined ? seed : null,
+    }),
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({ detail: `HTTP error ${res.status}` }));
+    throw new Error(errData.detail || 'CNN-LSTM generation failed');
+  }
+
+  return await res.json();
+}
+
+export async function fetchCnnLstmHistory(): Promise<{
+  success: boolean;
+  total_epochs: number;
+  history: Array<{ epoch: number; generator_loss: number; discriminator_loss: number }>;
+}> {
+  const res = await fetch(`${LAB_EVAL2_CONFIG.BASE_URL}${LAB_EVAL2_CONFIG.ENDPOINT_CNN_LSTM_HISTORY}`);
+  if (!res.ok) {
+    throw new Error(`HTTP error ${res.status} fetching history`);
+  }
+  return await res.json();
+}
+
+// -------------------------------------------------------------
+// MobileNetV2 GAN Experiment Interfaces & API Client Functions
+// -------------------------------------------------------------
+
+export interface MobileNetV2MetricStats {
+  mean: number;
+  std: number;
+}
+
+export interface MobileNetV2EvaluationResults {
+  test_set: {
+    frames: number;
+    videos: number;
+  };
+  summary_mean_std_over_seeds: {
+    baseline: {
+      accuracy: MobileNetV2MetricStats;
+      macro_precision: MobileNetV2MetricStats;
+      macro_recall: MobileNetV2MetricStats;
+      macro_f1: MobileNetV2MetricStats;
+      weighted_precision: MobileNetV2MetricStats;
+      weighted_recall: MobileNetV2MetricStats;
+      weighted_f1: MobileNetV2MetricStats;
+      video_accuracy: MobileNetV2MetricStats;
+      video_macro_f1: MobileNetV2MetricStats;
+    };
+    gan_augmented: {
+      accuracy: MobileNetV2MetricStats;
+      macro_precision: MobileNetV2MetricStats;
+      macro_recall: MobileNetV2MetricStats;
+      macro_f1: MobileNetV2MetricStats;
+      weighted_precision: MobileNetV2MetricStats;
+      weighted_recall: MobileNetV2MetricStats;
+      weighted_f1: MobileNetV2MetricStats;
+      video_accuracy: MobileNetV2MetricStats;
+      video_macro_f1: MobileNetV2MetricStats;
+    };
+  };
+  paired_difference_gan_minus_baseline: Record<string, MobileNetV2MetricStats>;
+  robustness_accuracy_mean_std: {
+    baseline: Record<string, MobileNetV2MetricStats>;
+    gan_augmented: Record<string, MobileNetV2MetricStats>;
+  };
+  latency: Array<{
+    condition: string;
+    device: string;
+    params: number;
+    file_MB: number;
+    batch_size: number;
+    ms_per_image: number;
+    p95_ms_per_image: number;
+  }>;
+  gan_label_fidelity: {
+    real_trained_model_accuracy_on_gan_images: number;
+    chance: number;
+  };
+}
+
+export interface MobileNetV2DatasetSplits {
+  videos_per_class: {
+    train: Record<string, number>;
+    val: Record<string, number>;
+    test: Record<string, number>;
+  };
+  frames_per_class: {
+    train: Record<string, number>;
+    val: Record<string, number>;
+    test: Record<string, number>;
+  };
+  synthetic_frames_per_class: Record<string, number>;
+  total_frames: {
+    train_real: number;
+    synthetic: number;
+    train_real_plus_synthetic: number;
+    val: number;
+    test: number;
+  };
+  synthetic_to_real_ratio: number;
+  frames_per_video: number;
+  validation_and_test_contain_synthetic_images: boolean;
+}
+
+export interface MobileNetV2MetadataResponse {
+  experiment: string;
+  classes: string[];
+  num_classes: number;
+  input_shape: string;
+  internal_shape: string;
+  evaluation_results: MobileNetV2EvaluationResults;
+  dataset_splits: MobileNetV2DatasetSplits;
+  training_details: any;
+  run_config: any;
+  classification_reports: any;
+  confusion_matrices: any;
+  latency: any[];
+  robustness: any[];
+  per_class_metrics: any[];
+  per_seed_results: any[];
+  summary_mean_std: any[];
+  gan_losses: any[];
+  engine_status: {
+    baseline_loaded: boolean;
+    augmented_loaded: boolean;
+    generator_loaded: boolean;
+    classes_count: number;
+    classes: string[];
+  };
+}
+
+export interface MobileNetV2PredictImageResponse {
+  success: boolean;
+  filename: string;
+  is_agreement: boolean;
+  baseline: {
+    predicted_class: string;
+    predicted_index: number;
+    confidence: number;
+    top_k: Array<{ class_name: string; confidence: number }>;
+    latency_ms: number;
+  };
+  gan_augmented: {
+    predicted_class: string;
+    predicted_index: number;
+    confidence: number;
+    top_k: Array<{ class_name: string; confidence: number }>;
+    latency_ms: number;
+  };
+  thumbnail_base64: string;
+  preprocessing: {
+    input_resolution: string;
+    scaling: string;
+  };
+}
+
+export interface MobileNetV2PredictVideoResponse {
+  success: boolean;
+  filename: string;
+  metadata: {
+    total_frames: number;
+    fps: number;
+    duration_seconds: number;
+    frames_sampled: number;
+    sampling_strategy: string;
+  };
+  video_prediction: {
+    is_agreement: boolean;
+    baseline: {
+      predicted_class: string;
+      confidence: number;
+      probabilities: Record<string, number>;
+      latency_ms: number;
+    };
+    gan_augmented: {
+      predicted_class: string;
+      confidence: number;
+      probabilities: Record<string, number>;
+      latency_ms: number;
+    };
+  };
+  frame_predictions: Array<{
+    step: number;
+    frame_num: number;
+    timestamp_sec: number;
+    thumbnail_base64: string;
+    baseline_pred: string;
+    baseline_conf: number;
+    augmented_pred: string;
+    augmented_conf: number;
+    agreement: boolean;
+  }>;
+}
+
+export async function fetchMobileNetV2Metadata(): Promise<MobileNetV2MetadataResponse> {
+  const res = await fetch(`${LAB_EVAL2_CONFIG.BASE_URL}${LAB_EVAL2_CONFIG.ENDPOINT_MOBILENETV2_METADATA}`);
+  if (!res.ok) {
+    throw new Error(`HTTP error ${res.status} fetching MobileNetV2 metadata`);
+  }
+  return await res.json();
+}
+
+export async function predictMobileNetV2Image(file: File): Promise<MobileNetV2PredictImageResponse> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${LAB_EVAL2_CONFIG.BASE_URL}${LAB_EVAL2_CONFIG.ENDPOINT_MOBILENETV2_PREDICT_IMAGE}`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: `HTTP error ${res.status}` }));
+    throw new Error(err.detail || 'MobileNetV2 image prediction failed');
+  }
+  return await res.json();
+}
+
+export async function predictMobileNetV2Video(videoFile: File, nFrames: number = 8): Promise<MobileNetV2PredictVideoResponse> {
+  const formData = new FormData();
+  formData.append('video', videoFile);
+  formData.append('n_frames', nFrames.toString());
+  const res = await fetch(`${LAB_EVAL2_CONFIG.BASE_URL}${LAB_EVAL2_CONFIG.ENDPOINT_MOBILENETV2_PREDICT_VIDEO}`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: `HTTP error ${res.status}` }));
+    throw new Error(err.detail || 'MobileNetV2 video prediction failed');
+  }
+  return await res.json();
+}
+
+export async function generateMobileNetV2Image(
+  classIdentifier: string | number,
+  seed?: number
+): Promise<LabEval2GenerateResponse> {
+  const res = await fetch(`${LAB_EVAL2_CONFIG.BASE_URL}${LAB_EVAL2_CONFIG.ENDPOINT_MOBILENETV2_GENERATE}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      class_identifier: classIdentifier,
+      seed: seed !== undefined ? seed : null,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: `HTTP error ${res.status}` }));
+    throw new Error(err.detail || 'MobileNetV2 generation failed');
+  }
+  return await res.json();
+}
+
+

@@ -20,13 +20,23 @@ import {
   X,
   HelpCircle,
   TrendingUp,
-  ChevronDown
+  ChevronDown,
+  Video,
+  Film,
+  Play,
+  CheckSquare,
+  Square,
+  Download,
+  ListFilter,
+  Check
 } from 'lucide-react';
 import {
   fetchLabEval2Metadata,
   fetchLabEval2Metrics,
   predictLabEval2,
   generateLabEval2Image,
+  extractVideoFrames,
+  predictVideoFramesDual,
   VERIFIED_TEST_COMPARISON,
   VERIFIED_ROBUSTNESS,
   VERIFIED_LATENCY,
@@ -35,7 +45,9 @@ import type {
   LabEval2Overview,
   LabEval2Metrics,
   LabEval2PredictResponse,
-  LabEval2GenerateResponse
+  LabEval2GenerateResponse,
+  ExtractedFrameItem,
+  VideoDualInferResponse
 } from '../../services/labEval2Api';
 
 interface GanCnnPageProps {
@@ -47,12 +59,26 @@ export const GanCnnPage: React.FC<GanCnnPageProps> = ({ onNavigateToTab }) => {
   const [metadata, setMetadata] = useState<LabEval2Overview | null>(null);
   const [metrics, setMetrics] = useState<LabEval2Metrics | null>(null);
 
-  // Prediction Interactive State
+  // Prediction Interactive State (Single Frame Mode)
+  const [interactiveMode, setInteractiveMode] = useState<'video' | 'single-frame'>('video');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isPredicting, setIsPredicting] = useState<boolean>(false);
   const [predictionResult, setPredictionResult] = useState<LabEval2PredictResponse | null>(null);
   const [predictError, setPredictError] = useState<string | null>(null);
+
+  // Interactive Video Testing State (Phase 3)
+  const [selectedVideoFile, setSelectedVideoFile] = useState<File | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
+  const [videoDuration, setVideoDuration] = useState<number | null>(null);
+  const [samplingStrategy, setSamplingStrategy] = useState<'uniform' | 'interval'>('uniform');
+  const [maxFramesCount, setMaxFramesCount] = useState<number>(5);
+  const [isExtracting, setIsExtracting] = useState<boolean>(false);
+  const [extractedFrames, setExtractedFrames] = useState<ExtractedFrameItem[]>([]);
+  const [selectedFrameIndices, setSelectedFrameIndices] = useState<number[]>([]);
+  const [isDualInferring, setIsDualInferring] = useState<boolean>(false);
+  const [dualInferResult, setDualInferResult] = useState<VideoDualInferResponse | null>(null);
+  const [videoError, setVideoError] = useState<string | null>(null);
 
   // Live Generator State
   const [selectedClassForGen, setSelectedClassForGen] = useState<string>('afternoon');
@@ -114,6 +140,99 @@ export const GanCnnPage: React.FC<GanCnnPageProps> = ({ onNavigateToTab }) => {
       }
     }
   };
+
+  const handleVideoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setSelectedVideoFile(file);
+      setVideoError(null);
+      setExtractedFrames([]);
+      setSelectedFrameIndices([]);
+      setDualInferResult(null);
+
+      const url = URL.createObjectURL(file);
+      setVideoPreviewUrl(url);
+    }
+  };
+
+  const handleLoadSampleVideo = async () => {
+    try {
+      setVideoError(null);
+      const res = await fetch('/samples/isl_sample_video.mp4');
+      if (!res.ok) throw new Error('Sample video not found');
+      const blob = await res.blob();
+      const file = new File([blob], 'isl_sample_video.mp4', { type: 'video/mp4' });
+      setSelectedVideoFile(file);
+      setExtractedFrames([]);
+      setSelectedFrameIndices([]);
+      setDualInferResult(null);
+      const url = URL.createObjectURL(file);
+      setVideoPreviewUrl(url);
+    } catch (err: any) {
+      setVideoError(err.message || 'Could not load sample video');
+    }
+  };
+
+  const handleExtractFrames = async () => {
+    if (!selectedVideoFile) return;
+    setIsExtracting(true);
+    setVideoError(null);
+    try {
+      const res = await extractVideoFrames(selectedVideoFile, samplingStrategy, maxFramesCount);
+      setExtractedFrames(res.frames);
+      setSelectedFrameIndices(res.frames.map(f => f.frame_index));
+    } catch (err: any) {
+      setVideoError(err.message || 'Frame extraction failed');
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  const handleRunDualVideoInference = async () => {
+    if (!selectedVideoFile) return;
+    setIsDualInferring(true);
+    setVideoError(null);
+    try {
+      const res = await predictVideoFramesDual(
+        selectedVideoFile,
+        samplingStrategy,
+        maxFramesCount,
+        selectedFrameIndices.length > 0 ? selectedFrameIndices : undefined
+      );
+      setDualInferResult(res);
+    } catch (err: any) {
+      setVideoError(err.message || 'Dual video inference failed');
+    } finally {
+      setIsDualInferring(false);
+    }
+  };
+
+  const toggleFrameSelection = (idx: number) => {
+    setSelectedFrameIndices(prev => 
+      prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
+    );
+  };
+
+  const selectAllFrames = () => {
+    setSelectedFrameIndices(extractedFrames.map(f => f.frame_index));
+  };
+
+  const clearFrameSelection = () => {
+    setSelectedFrameIndices([]);
+  };
+
+  const handleExportResults = () => {
+    if (!dualInferResult) return;
+    const jsonStr = JSON.stringify(dualInferResult, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `lab2_dual_inference_${dualInferResult.filename || 'video'}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
 
   const handleRunPrediction = async () => {
     if (!selectedFile) return;
@@ -1203,168 +1322,623 @@ export const GanCnnPage: React.FC<GanCnnPageProps> = ({ onNavigateToTab }) => {
         </section>
       )}
 
-      {/* SECTION F: Interactive Model Prediction */}
+      {/* SECTION F: Interactive Video Testing & Frame-Level Inference */}
       {activeSection === 'prediction' && (
         <section className="lab2-section-content" aria-labelledby="heading-section-f">
           <div className="lab2-section-header">
             <div>
               <h2 id="heading-section-f" className="lab2-section-title">
-                <Upload size={20} className="text-brand" />
-                <span>Section F: Interactive Frame Inference</span>
+                <Video size={20} className="text-brand" />
+                <span>Section F: Interactive Video Testing & Frame Inference</span>
               </h2>
               <p className="lab2-section-subtitle">
-                Upload a single Indian Sign Language frame to run simultaneous dual inference through both trained Keras checkpoints.
+                Upload an Indian Sign Language video to extract representative gesture frames and evaluate both Baseline CNN and DCGAN-Augmented CNN simultaneously.
               </p>
             </div>
-            <span className="badge badge-brand text-xs">Dual Inference Pipeline</span>
-          </div>
-
-          <div className="lab2-card mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-              {/* Upload Input Area */}
-              <div>
-                <label className="block text-xs font-semibold text-secondary mb-2">
-                  Select an Isolated Sign Image Frame:
-                </label>
-                <div className="lab2-file-dropzone">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    className="lab2-file-input"
-                    id="lab2-file-upload"
-                  />
-                  <label htmlFor="lab2-file-upload" className="lab2-file-label">
-                    <Upload size={24} className="text-brand mb-1" />
-                    <span className="text-xs font-semibold text-primary">Click to select an image frame</span>
-                    <span className="text-[11px] text-secondary">Supported: PNG, JPEG (auto-cropped to 64×64 RGB)</span>
-                  </label>
-                </div>
-
-                {selectedFile && (
-                  <div className="mt-3 flex items-center justify-between text-xs p-2 rounded bg-surface/50 border border-border/40">
-                    <span className="truncate max-w-[200px] text-primary">{selectedFile.name}</span>
-                    <span className="text-secondary font-mono">{(selectedFile.size / 1024).toFixed(1)} KB</span>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleRunPrediction}
-                  disabled={!selectedFile || isPredicting}
-                  className="btn btn-primary w-full mt-4 text-xs font-semibold flex items-center justify-center gap-2"
-                >
-                  {isPredicting ? (
-                    <>
-                      <RefreshCw size={14} className="animate-spin" />
-                      <span>Running Dual Inference...</span>
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 size={14} />
-                      <span>Classify Frame</span>
-                    </>
-                  )}
-                </button>
-
-                {predictError && (
-                  <div className="lab2-alert-error mt-3">
-                    <AlertTriangle size={15} />
-                    <span>{predictError}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Image Preview Area */}
-              <div>
-                <label className="block text-xs font-semibold text-secondary mb-2">
-                  Input Frame Preprocessing Preview:
-                </label>
-                <div className="lab2-preview-box">
-                  {previewUrl ? (
-                    <img 
-                      src={previewUrl} 
-                      alt="Sign Frame Preview" 
-                      className="lab2-preview-img"
-                    />
-                  ) : (
-                    <div className="lab2-preview-placeholder">
-                      <ImageIcon size={32} className="text-secondary/40 mb-2" />
-                      <span className="text-xs text-secondary">No frame selected yet</span>
-                    </div>
-                  )}
-                </div>
-                <div className="text-[11px] text-secondary mt-2 flex items-center gap-1">
-                  <Info size={12} className="text-brand" />
-                  <span>Preprocessing: Bilinear resize to 64×64 RGB with [-1.0, 1.0] normalization.</span>
-                </div>
-              </div>
+            {/* Mode Switcher */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className={`lab2-pill-btn ${interactiveMode === 'video' ? 'active' : ''}`}
+                onClick={() => setInteractiveMode('video')}
+              >
+                <Film size={13} className="inline mr-1" />
+                <span>Video Mode (Primary)</span>
+              </button>
+              <button
+                type="button"
+                className={`lab2-pill-btn ${interactiveMode === 'single-frame' ? 'active' : ''}`}
+                onClick={() => setInteractiveMode('single-frame')}
+              >
+                <ImageIcon size={13} className="inline mr-1" />
+                <span>Single Frame Mode</span>
+              </button>
             </div>
+          </div>
 
-            {/* Inference Results Cards */}
-            {predictionResult && (
-              <div className="mt-6 pt-6 border-t border-border/40">
-                <h3 className="text-sm font-bold text-primary mb-3">Model Prediction Outputs:</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Baseline CNN Result */}
-                  {predictionResult.baseline && (
-                    <div className="lab2-card border-brand/30 bg-brand/5">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="badge badge-brand text-xs">Baseline CNN (Real Only)</span>
+          {/* MODE 1: Interactive Video Testing */}
+          {interactiveMode === 'video' && (
+            <div className="space-y-6">
+              {/* Card 1: Video Upload & Frame Sampling Controls */}
+              <div className="lab2-card">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                  {/* Left Column: Upload & Sampling Settings */}
+                  <div>
+                    <label className="block text-xs font-semibold text-secondary mb-2">
+                      Upload an ISL Gesture Video Clip:
+                    </label>
+                    <div className="lab2-file-dropzone mb-3">
+                      <input
+                        type="file"
+                        accept="video/mp4,video/quicktime,video/x-msvideo,video/webm"
+                        onChange={handleVideoFileChange}
+                        className="lab2-file-input"
+                        id="lab2-video-upload"
+                      />
+                      <label htmlFor="lab2-video-upload" className="lab2-file-label">
+                        <Video size={26} className="text-brand mb-1" />
+                        <span className="text-xs font-semibold text-primary">Click to select an ISL video</span>
+                        <span className="text-[11px] text-secondary">Supported: MP4, MOV, AVI, WebM (Max 50MB)</span>
+                      </label>
+                    </div>
+
+                    {/* Quick Test Sample Helper Button */}
+                    <div className="flex items-center justify-between mb-4">
+                      <button
+                        type="button"
+                        onClick={handleLoadSampleVideo}
+                        className="btn btn-secondary text-xs flex items-center gap-1.5 py-1.5"
+                      >
+                        <Play size={12} className="text-brand" />
+                        <span>Load Sample ISL Video (afternoon / famous)</span>
+                      </button>
+                      {selectedVideoFile && (
                         <span className="text-xs font-mono text-secondary">
-                          {predictionResult.baseline.latency_ms} ms
+                          {(selectedVideoFile.size / (1024 * 1024)).toFixed(2)} MB
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Sampling Configuration */}
+                    <div className="p-3.5 rounded-lg bg-surface/50 border border-border/40 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-primary flex items-center gap-1.5">
+                          <ListFilter size={14} className="text-brand" />
+                          <span>Frame Sampling Strategy</span>
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            className={`lab2-pill-btn text-xs py-1 px-2.5 ${samplingStrategy === 'uniform' ? 'active' : ''}`}
+                            onClick={() => setSamplingStrategy('uniform')}
+                          >
+                            Uniform (Matched)
+                          </button>
+                          <button
+                            type="button"
+                            className={`lab2-pill-btn text-xs py-1 px-2.5 ${samplingStrategy === 'interval' ? 'active' : ''}`}
+                            onClick={() => setSamplingStrategy('interval')}
+                          >
+                            Fixed Interval
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Frame Count Limit */}
+                      <div className="flex items-center justify-between pt-2 border-t border-border/30">
+                        <span className="text-xs text-secondary">Frames to Extract:</span>
+                        <div className="flex items-center gap-1">
+                          {[3, 5, 8, 10, 15].map((cnt) => (
+                            <button
+                              key={cnt}
+                              type="button"
+                              className={`lab2-pill-btn text-xs py-0.5 px-2 font-mono ${maxFramesCount === cnt ? 'active' : ''}`}
+                              onClick={() => setMaxFramesCount(cnt)}
+                            >
+                              {cnt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Extract Frames Action Button */}
+                    <button
+                      type="button"
+                      onClick={handleExtractFrames}
+                      disabled={!selectedVideoFile || isExtracting}
+                      className="btn btn-primary w-full mt-4 text-xs font-semibold flex items-center justify-center gap-2"
+                    >
+                      {isExtracting ? (
+                        <>
+                          <RefreshCw size={14} className="animate-spin" />
+                          <span>Extracting Frames with OpenCV...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Film size={14} />
+                          <span>1. Extract Representative Video Frames</span>
+                        </>
+                      )}
+                    </button>
+
+                    {videoError && (
+                      <div className="lab2-alert-error mt-3">
+                        <AlertTriangle size={15} />
+                        <span>{videoError}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right Column: Video Preview Player */}
+                  <div>
+                    <label className="block text-xs font-semibold text-secondary mb-2">
+                      Video Playback Preview:
+                    </label>
+                    <div className="lab2-video-player-wrap">
+                      {videoPreviewUrl ? (
+                        <>
+                          <video
+                            src={videoPreviewUrl}
+                            controls
+                            className="lab2-video-player"
+                            onLoadedMetadata={(e) => {
+                              const v = e.currentTarget;
+                              setVideoDuration(v.duration);
+                            }}
+                          />
+                          <div className="lab2-video-meta-bar">
+                            <span className="truncate max-w-[220px] font-medium text-primary">
+                              {selectedVideoFile?.name}
+                            </span>
+                            <span className="font-mono">
+                              {videoDuration ? `${videoDuration.toFixed(2)}s` : 'Video Loaded'}
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="h-48 flex flex-col items-center justify-center text-secondary">
+                          <Video size={36} className="text-secondary/40 mb-2" />
+                          <span className="text-xs">Select or load a video to preview</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-secondary mt-2 flex items-center gap-1">
+                      <Info size={12} className="text-brand shrink-0" />
+                      <span>Extracted frames are normalized to [-1.0, 1.0] and resized to 64×64 RGB matching the training protocol.</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 2: Extracted Frame Gallery (Selection & Preview) */}
+              {extractedFrames.length > 0 && (
+                <div className="lab2-card">
+                  <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-primary flex items-center gap-2">
+                        <Film size={16} className="text-brand" />
+                        <span>Extracted Video Frames ({extractedFrames.length} Frames Sampled)</span>
+                      </h3>
+                      <p className="text-xs text-secondary mt-0.5">
+                        Select individual frames or evaluate all. Click any frame thumbnail to toggle selection.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={selectAllFrames}
+                        className="btn btn-secondary text-xs py-1 px-2.5 flex items-center gap-1"
+                      >
+                        <CheckSquare size={13} />
+                        <span>Select All ({extractedFrames.length})</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearFrameSelection}
+                        className="btn btn-secondary text-xs py-1 px-2.5 flex items-center gap-1"
+                      >
+                        <Square size={13} />
+                        <span>Clear</span>
+                      </button>
+                      <span className="badge badge-brand text-xs font-mono">
+                        {selectedFrameIndices.length} / {extractedFrames.length} Selected
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Thumbnail Gallery Grid */}
+                  <div className="lab2-video-frame-gallery">
+                    {extractedFrames.map((frame) => {
+                      const isSelected = selectedFrameIndices.includes(frame.frame_index);
+                      return (
+                        <div
+                          key={frame.frame_index}
+                          className={`lab2-frame-thumb-card ${isSelected ? 'selected' : ''}`}
+                          onClick={() => toggleFrameSelection(frame.frame_index)}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {}} // handled by card click
+                            className="lab2-frame-checkbox"
+                          />
+                          <div className="lab2-frame-thumb-img-wrap">
+                            <img
+                              src={frame.thumbnail}
+                              alt={`Frame at ${frame.timestamp_formatted}`}
+                              className="lab2-frame-thumb-img"
+                            />
+                            <span className="lab2-frame-thumb-badge">
+                              {frame.timestamp_formatted}
+                            </span>
+                          </div>
+                          <div className="lab2-frame-footer-label">
+                            <span>#{frame.frame_index + 1}</span>
+                            <span className="text-[10px] text-secondary font-mono">f_{frame.video_frame_num}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Dual Inference Action Trigger */}
+                  <div className="mt-4 pt-3 border-t border-border/40 flex items-center justify-between flex-wrap gap-3">
+                    <div className="text-xs text-secondary">
+                      Ready to execute simultaneous inference through <strong>Baseline CNN</strong> and <strong>DCGAN-Augmented CNN</strong>.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRunDualVideoInference}
+                      disabled={selectedFrameIndices.length === 0 || isDualInferring}
+                      className="btn btn-primary text-xs font-semibold flex items-center gap-2 py-2 px-5"
+                    >
+                      {isDualInferring ? (
+                        <>
+                          <RefreshCw size={14} className="animate-spin" />
+                          <span>Running Dual Frame Inference...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 size={14} />
+                          <span>2. Run Dual Inference on {selectedFrameIndices.length} Selected Frames</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Card 3: Dual Model Frame-by-Frame Comparison & Aggregation */}
+              {dualInferResult && (
+                <div className="space-y-6">
+                  {/* Aggregated Consensus Summary Card */}
+                  <div className="lab2-card">
+                    <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                      <div>
+                        <h3 className="text-sm font-bold text-primary flex items-center gap-2">
+                          <BarChart2 size={16} className="text-emerald" />
+                          <span>Frame-Level Dual Inference Summary ({dualInferResult.total_frames_evaluated} Frames Analyzed)</span>
+                        </h3>
+                        <span className="text-xs text-secondary">
+                          Empirical agreement and classification distribution across gesture frames
                         </span>
                       </div>
-                      <div className="text-xl font-bold text-primary mb-1 capitalize">
-                        {predictionResult.baseline.predicted_class}
-                      </div>
-                      <div className="text-xs text-emerald font-semibold mb-3">
-                        Confidence: {(predictionResult.baseline.confidence * 100).toFixed(1)}%
+                      <button
+                        type="button"
+                        onClick={handleExportResults}
+                        className="btn btn-secondary text-xs flex items-center gap-1.5 py-1 px-3"
+                      >
+                        <Download size={13} />
+                        <span>Export Run JSON</span>
+                      </button>
+                    </div>
+
+                    {/* Consensus Comparison Panels */}
+                    <div className="lab2-consensus-panel">
+                      {/* Baseline Consensus */}
+                      <div className="lab2-consensus-box border-brand/30 bg-brand/5">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="badge badge-brand text-xs">Baseline CNN (Real Data Only)</span>
+                          <span className="text-xs font-mono text-secondary">
+                            {dualInferResult.latencies.per_frame_baseline_ms} ms/frame
+                          </span>
+                        </div>
+                        <div className="text-xs text-secondary mb-1">Majority Gesture Consensus:</div>
+                        <div className="text-xl font-bold text-primary capitalize mb-2">
+                          {dualInferResult.aggregated_summary.baseline_consensus}
+                        </div>
+                        <div className="text-xs text-secondary font-medium">
+                          Vote Distribution:
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {Object.entries(dualInferResult.aggregated_summary.baseline_distribution).map(([cls, cnt]) => (
+                            <span key={cls} className="badge badge-neutral text-xs capitalize">
+                              {cls}: <strong>{cnt}</strong>
+                            </span>
+                          ))}
+                        </div>
                       </div>
 
-                      <div className="text-xs text-secondary font-semibold mb-1">Top 5 Softmax Probabilities:</div>
-                      <div className="space-y-1">
-                        {predictionResult.baseline.top5.map((p, idx) => (
-                          <div key={idx} className="flex items-center justify-between text-xs py-0.5">
-                            <span className="text-primary capitalize">{p.class_name}</span>
-                            <span className="font-mono text-secondary">{(p.confidence * 100).toFixed(1)}%</span>
-                          </div>
-                        ))}
+                      {/* Augmented Consensus */}
+                      <div className="lab2-consensus-box border-violet/30 bg-violet/5">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="badge badge-violet text-xs">DCGAN-Augmented CNN (50% Fake)</span>
+                          <span className="text-xs font-mono text-secondary">
+                            {dualInferResult.latencies.per_frame_augmented_ms} ms/frame
+                          </span>
+                        </div>
+                        <div className="text-xs text-secondary mb-1">Majority Gesture Consensus:</div>
+                        <div className="text-xl font-bold text-primary capitalize mb-2">
+                          {dualInferResult.aggregated_summary.augmented_consensus}
+                        </div>
+                        <div className="text-xs text-secondary font-medium">
+                          Vote Distribution:
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {Object.entries(dualInferResult.aggregated_summary.augmented_distribution).map(([cls, cnt]) => (
+                            <span key={cls} className="badge badge-neutral text-xs capitalize">
+                              {cls}: <strong>{cnt}</strong>
+                            </span>
+                          ))}
+                        </div>
                       </div>
+
+                      {/* Agreement Metric Box */}
+                      <div className="lab2-consensus-box border-border/40">
+                        <div className="text-xs font-bold text-primary mb-1">Dual-Model Agreement</div>
+                        <div className="text-3xl font-mono font-bold text-brand mb-1">
+                          {dualInferResult.agreement_rate_percent}%
+                        </div>
+                        <div className="text-xs text-secondary mb-2">
+                          {dualInferResult.agreement_count} of {dualInferResult.total_frames_evaluated} frames matched exactly
+                        </div>
+                        <div>
+                          {dualInferResult.aggregated_summary.consensus_agreement ? (
+                            <span className="lab2-match-pill">
+                              <Check size={11} /> Consensus Matches
+                            </span>
+                          ) : (
+                            <span className="lab2-diverge-pill">
+                              <AlertTriangle size={11} /> Models Diverged
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Scientific Disclaimer Alert */}
+                    <div className="mt-4 p-3 rounded-lg bg-surface/50 border border-brand/20 flex items-start gap-2.5">
+                      <Info size={16} className="text-brand shrink-0 mt-0.5" />
+                      <p className="text-xs text-secondary leading-relaxed">
+                        <strong>Scientific Note:</strong> {dualInferResult.aggregated_summary.disclaimer}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Frame-by-Frame Comparison Table */}
+                  <div className="lab2-card">
+                    <h3 className="text-sm font-bold text-primary mb-3 flex items-center gap-2">
+                      <Table size={16} className="text-brand" />
+                      <span>Frame-by-Frame Detailed Predictions & Probabilities</span>
+                    </h3>
+
+                    <div className="lab2-table-wrap">
+                      <table className="lab2-table">
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>Frame Thumbnail</th>
+                            <th>Timestamp</th>
+                            <th>Baseline CNN (49.89%)</th>
+                            <th>DCGAN-Augmented CNN (29.00%)</th>
+                            <th>Agreement</th>
+                            <th>Top-3 Probability Distributions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {dualInferResult.frame_results.map((r) => (
+                            <tr key={r.frame_index}>
+                              <td className="font-mono text-xs text-secondary">#{r.frame_index + 1}</td>
+                              <td>
+                                <div className="w-12 h-12 rounded overflow-hidden bg-black border border-border/40">
+                                  <img src={r.thumbnail} alt={`Frame ${r.timestamp_formatted}`} className="w-full h-full object-cover" />
+                                </div>
+                              </td>
+                              <td className="font-mono text-xs text-secondary">{r.timestamp_formatted}</td>
+                              <td>
+                                <div className="font-bold text-xs text-primary capitalize">
+                                  {r.baseline.predicted_class}
+                                </div>
+                                <div className="text-[11px] text-emerald font-mono">
+                                  {(r.baseline.confidence * 100).toFixed(1)}%
+                                </div>
+                              </td>
+                              <td>
+                                <div className="font-bold text-xs text-primary capitalize">
+                                  {r.gan_augmented.predicted_class}
+                                </div>
+                                <div className="text-[11px] text-amber font-mono">
+                                  {(r.gan_augmented.confidence * 100).toFixed(1)}%
+                                </div>
+                              </td>
+                              <td>
+                                {r.agreement ? (
+                                  <span className="lab2-match-pill">
+                                    <Check size={10} /> Match
+                                  </span>
+                                ) : (
+                                  <span className="lab2-diverge-pill">
+                                    <AlertTriangle size={10} /> Diverge
+                                  </span>
+                                )}
+                              </td>
+                              <td>
+                                <div className="space-y-1 text-[11px]">
+                                  <div className="text-brand font-medium">
+                                    Base Top 3:{' '}
+                                    {r.baseline.top3.map(t => `${t.class_name} (${(t.confidence*100).toFixed(0)}%)`).join(', ')}
+                                  </div>
+                                  <div className="text-violet font-medium">
+                                    Aug Top 3:{' '}
+                                    {r.gan_augmented.top3.map(t => `${t.class_name} (${(t.confidence*100).toFixed(0)}%)`).join(', ')}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* MODE 2: Single Frame Upload Mode (Preserved from original implementation) */}
+          {interactiveMode === 'single-frame' && (
+            <div className="lab2-card">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                <div>
+                  <label className="block text-xs font-semibold text-secondary mb-2">
+                    Select an Isolated Sign Image Frame:
+                  </label>
+                  <div className="lab2-file-dropzone">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      className="lab2-file-input"
+                      id="lab2-file-upload"
+                    />
+                    <label htmlFor="lab2-file-upload" className="lab2-file-label">
+                      <Upload size={24} className="text-brand mb-1" />
+                      <span className="text-xs font-semibold text-primary">Click to select an image frame</span>
+                      <span className="text-[11px] text-secondary">Supported: PNG, JPEG (auto-cropped to 64×64 RGB)</span>
+                    </label>
+                  </div>
+
+                  {selectedFile && (
+                    <div className="mt-3 flex items-center justify-between text-xs p-2 rounded bg-surface/50 border border-border/40">
+                      <span className="truncate max-w-[200px] text-primary">{selectedFile.name}</span>
+                      <span className="text-secondary font-mono">{(selectedFile.size / 1024).toFixed(1)} KB</span>
                     </div>
                   )}
 
-                  {/* GAN Augmented Result */}
-                  {predictionResult.gan_augmented && (
-                    <div className="lab2-card border-violet/30 bg-violet/5">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="badge badge-violet text-xs">DCGAN + CNN (Augmented)</span>
-                        <span className="text-xs font-mono text-secondary">
-                          {predictionResult.gan_augmented.latency_ms} ms
-                        </span>
-                      </div>
-                      <div className="text-xl font-bold text-primary mb-1 capitalize">
-                        {predictionResult.gan_augmented.predicted_class}
-                      </div>
-                      <div className="text-xs text-amber font-semibold mb-3">
-                        Confidence: {(predictionResult.gan_augmented.confidence * 100).toFixed(1)}%
-                      </div>
+                  <button
+                    type="button"
+                    onClick={handleRunPrediction}
+                    disabled={!selectedFile || isPredicting}
+                    className="btn btn-primary w-full mt-4 text-xs font-semibold flex items-center justify-center gap-2"
+                  >
+                    {isPredicting ? (
+                      <>
+                        <RefreshCw size={14} className="animate-spin" />
+                        <span>Running Dual Inference...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={14} />
+                        <span>Classify Single Frame</span>
+                      </>
+                    )}
+                  </button>
 
-                      <div className="text-xs text-secondary font-semibold mb-1">Top 5 Softmax Probabilities:</div>
-                      <div className="space-y-1">
-                        {predictionResult.gan_augmented.top5.map((p, idx) => (
-                          <div key={idx} className="flex items-center justify-between text-xs py-0.5">
-                            <span className="text-primary capitalize">{p.class_name}</span>
-                            <span className="font-mono text-secondary">{(p.confidence * 100).toFixed(1)}%</span>
-                          </div>
-                        ))}
-                      </div>
+                  {predictError && (
+                    <div className="lab2-alert-error mt-3">
+                      <AlertTriangle size={15} />
+                      <span>{predictError}</span>
                     </div>
                   )}
                 </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-secondary mb-2">
+                    Input Frame Preprocessing Preview:
+                  </label>
+                  <div className="lab2-preview-box">
+                    {previewUrl ? (
+                      <img 
+                        src={previewUrl} 
+                        alt="Sign Frame Preview" 
+                        className="lab2-preview-img"
+                      />
+                    ) : (
+                      <div className="lab2-preview-placeholder">
+                        <ImageIcon size={32} className="text-secondary/40 mb-2" />
+                        <span className="text-xs text-secondary">No frame selected yet</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-secondary mt-2 flex items-center gap-1">
+                    <Info size={12} className="text-brand" />
+                    <span>Preprocessing: Bilinear resize to 64×64 RGB with [-1.0, 1.0] normalization.</span>
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
+
+              {predictionResult && (
+                <div className="mt-6 pt-6 border-t border-border/40">
+                  <h3 className="text-sm font-bold text-primary mb-3">Model Prediction Outputs:</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {predictionResult.baseline && (
+                      <div className="lab2-card border-brand/30 bg-brand/5">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="badge badge-brand text-xs">Baseline CNN (Real Only)</span>
+                          <span className="text-xs font-mono text-secondary">
+                            {predictionResult.baseline.latency_ms} ms
+                          </span>
+                        </div>
+                        <div className="text-xl font-bold text-primary mb-1 capitalize">
+                          {predictionResult.baseline.predicted_class}
+                        </div>
+                        <div className="text-xs text-emerald font-semibold mb-3">
+                          Confidence: {(predictionResult.baseline.confidence * 100).toFixed(1)}%
+                        </div>
+                        <div className="text-xs text-secondary font-semibold mb-1">Top 5 Softmax Probabilities:</div>
+                        <div className="space-y-1">
+                          {predictionResult.baseline.top5.map((p, idx) => (
+                            <div key={idx} className="flex items-center justify-between text-xs py-0.5">
+                              <span className="text-primary capitalize">{p.class_name}</span>
+                              <span className="font-mono text-secondary">{(p.confidence * 100).toFixed(1)}%</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {predictionResult.gan_augmented && (
+                      <div className="lab2-card border-violet/30 bg-violet/5">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="badge badge-violet text-xs">DCGAN + CNN (Augmented)</span>
+                          <span className="text-xs font-mono text-secondary">
+                            {predictionResult.gan_augmented.latency_ms} ms
+                          </span>
+                        </div>
+                        <div className="text-xl font-bold text-primary mb-1 capitalize">
+                          {predictionResult.gan_augmented.predicted_class}
+                        </div>
+                        <div className="text-xs text-amber font-semibold mb-3">
+                          Confidence: {(predictionResult.gan_augmented.confidence * 100).toFixed(1)}%
+                        </div>
+                        <div className="text-xs text-secondary font-semibold mb-1">Top 5 Softmax Probabilities:</div>
+                        <div className="space-y-1">
+                          {predictionResult.gan_augmented.top5.map((p, idx) => (
+                            <div key={idx} className="flex items-center justify-between text-xs py-0.5">
+                              <span className="text-primary capitalize">{p.class_name}</span>
+                              <span className="font-mono text-secondary">{(p.confidence * 100).toFixed(1)}%</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </section>
       )}
 

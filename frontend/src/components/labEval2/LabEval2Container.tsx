@@ -5,7 +5,6 @@ import {
   Layers, 
   Zap, 
   CheckCircle2, 
-  Clock, 
   Database, 
   FileCheck2,
   TrendingUp,
@@ -13,8 +12,8 @@ import {
   Sparkles
 } from 'lucide-react';
 import { GanCnnPage } from './GanCnnPage';
-import { GanCnnLstmPlaceholder } from './GanCnnLstmPlaceholder';
-import { GanMobileNetV2Placeholder } from './GanMobileNetV2Placeholder';
+import { GanCnnLstmPage } from './GanCnnLstmPage';
+import { GanMobileNetV2Page } from './GanMobileNetV2Page';
 
 export type LabEval2ModelTab = 'gan-cnn' | 'gan-cnn-lstm' | 'gan-mobilenetv2';
 
@@ -67,7 +66,7 @@ export const LabEval2Container: React.FC = () => {
                 <Cpu size={20} />
               </div>
               <span className="badge badge-success text-[11px]">
-                <CheckCircle2 size={11} /> Verified Run
+                <CheckCircle2 size={11} /> Verified Dual Run
               </span>
             </div>
             <div className="lab2-exp-title">1. GAN + Custom 2D CNN</div>
@@ -95,15 +94,17 @@ export const LabEval2Container: React.FC = () => {
                 <Layers size={20} />
               </div>
               <span className="badge badge-amber text-[11px]">
-                <Clock size={11} /> Pending Integration
+                <CheckCircle2 size={11} /> Verified Baseline • Aug Pending
               </span>
             </div>
             <div className="lab2-exp-title">2. GAN + CNN-LSTM</div>
             <p className="lab2-exp-desc">
-              Spatio-temporal recurrent network modeling sequential frame dynamics with generative trajectory interpolation.
+              Spatio-temporal recurrent network modeling 33-frame sequences with class-conditioned DCGAN analysis.
             </p>
             <div className="lab2-exp-footer">
-              <span className="text-xs text-secondary font-medium">Awaiting Checkpoints</span>
+              <span className="font-mono text-xs font-semibold text-accent-emerald">4.44% Base</span>
+              <span className="text-secondary text-xs">•</span>
+              <span className="text-xs text-secondary font-medium">Aug Pending</span>
             </div>
           </button>
 
@@ -117,19 +118,21 @@ export const LabEval2Container: React.FC = () => {
             aria-selected={activeModelTab === 'gan-mobilenetv2'}
           >
             <div className="lab2-exp-top">
-              <div className="lab2-exp-icon-wrap">
+              <div className="lab2-exp-icon-wrap active-brand">
                 <Zap size={20} />
               </div>
-              <span className="badge badge-amber text-[11px]">
-                <Clock size={11} /> Pending Integration
+              <span className="badge badge-success text-[11px]">
+                <CheckCircle2 size={11} /> Verified Dual Run
               </span>
             </div>
             <div className="lab2-exp-title">3. GAN + MobileNetV2</div>
             <p className="lab2-exp-desc">
-              Pretrained depthwise separable inverted residual architecture fine-tuned on generative sign variations.
+              Fine-tuned inverted residual backbone evaluated against 600 DCGAN synthetic frames (5 classes, 3 seeds).
             </p>
             <div className="lab2-exp-footer">
-              <span className="text-xs text-secondary font-medium">Awaiting Checkpoints</span>
+              <span className="font-mono text-xs font-semibold text-accent-emerald">55.56% Base</span>
+              <span className="text-secondary text-xs">•</span>
+              <span className="font-mono text-xs font-semibold text-accent-amber">55.56% Aug</span>
             </div>
           </button>
         </div>
@@ -183,6 +186,106 @@ export const LabEval2Container: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Selected Experiment KPI Summary Bar (when GAN + CNN-LSTM active) */}
+        {activeModelTab === 'gan-cnn-lstm' && (
+          <div className="lab2-kpi-bar" aria-label="CNN-LSTM Experiment Ground Truth Metrics">
+            <div className="lab2-kpi-card">
+              <div className="lab2-kpi-label">
+                <Database size={13} className="text-brand" />
+                <span>Vocabulary</span>
+              </div>
+              <div className="lab2-kpi-value">76</div>
+              <div className="lab2-kpi-sub">ISL Word Classes</div>
+            </div>
+
+            <div className="lab2-kpi-card">
+              <div className="lab2-kpi-label">
+                <FileCheck2 size={13} className="text-cyan" />
+                <span>Held-Out Videos</span>
+              </div>
+              <div className="lab2-kpi-value font-mono">180</div>
+              <div className="lab2-kpi-sub">Real Video Sequences</div>
+            </div>
+
+            <div className="lab2-kpi-card">
+              <div className="lab2-kpi-label">
+                <Layers size={13} className="text-brand" />
+                <span>Sequence Length</span>
+              </div>
+              <div className="lab2-kpi-value font-mono">33</div>
+              <div className="lab2-kpi-sub">Frames (112×112)</div>
+            </div>
+
+            <div className="lab2-kpi-card highlight-baseline">
+              <div className="lab2-kpi-label">
+                <Percent size={13} className="text-emerald" />
+                <span>Baseline CNN-LSTM</span>
+              </div>
+              <div className="lab2-kpi-value font-mono text-emerald">4.44%</div>
+              <div className="lab2-kpi-sub">Clean Accuracy (8/180)</div>
+            </div>
+
+            <div className="lab2-kpi-card">
+              <div className="lab2-kpi-label">
+                <Sparkles size={13} className="text-violet" />
+                <span>DCGAN Generator</span>
+              </div>
+              <div className="lab2-kpi-value font-mono">64×64</div>
+              <div className="lab2-kpi-sub">Loaded & Verified (16.1 MB)</div>
+            </div>
+          </div>
+        )}
+
+        {/* Selected Experiment KPI Summary Bar (when GAN + MobileNetV2 active) */}
+        {activeModelTab === 'gan-mobilenetv2' && (
+          <div className="lab2-kpi-bar" aria-label="MobileNetV2 Experiment Ground Truth Metrics">
+            <div className="lab2-kpi-card">
+              <div className="lab2-kpi-label">
+                <Database size={13} className="text-brand" />
+                <span>Vocabulary</span>
+              </div>
+              <div className="lab2-kpi-value">5</div>
+              <div className="lab2-kpi-sub">Target Sign Classes</div>
+            </div>
+
+            <div className="lab2-kpi-card">
+              <div className="lab2-kpi-label">
+                <FileCheck2 size={13} className="text-cyan" />
+                <span>Held-Out Test</span>
+              </div>
+              <div className="lab2-kpi-value font-mono">120</div>
+              <div className="lab2-kpi-sub">Frames (15 Real Videos)</div>
+            </div>
+
+            <div className="lab2-kpi-card highlight-baseline">
+              <div className="lab2-kpi-label">
+                <Percent size={13} className="text-emerald" />
+                <span>Baseline MobileNet</span>
+              </div>
+              <div className="lab2-kpi-value font-mono text-emerald">55.56%</div>
+              <div className="lab2-kpi-sub">± 1.27% (77.8% Video Acc)</div>
+            </div>
+
+            <div className="lab2-kpi-card highlight-aug">
+              <div className="lab2-kpi-label">
+                <TrendingUp size={13} className="text-amber" />
+                <span>GAN-Aug MobileNet</span>
+              </div>
+              <div className="lab2-kpi-value font-mono text-amber">55.56%</div>
+              <div className="lab2-kpi-sub">± 5.42% (75.6% Video Acc)</div>
+            </div>
+
+            <div className="lab2-kpi-card">
+              <div className="lab2-kpi-label">
+                <CheckCircle2 size={13} className="text-violet" />
+                <span>Artifacts</span>
+              </div>
+              <div className="lab2-kpi-value">3</div>
+              <div className="lab2-kpi-sub">Both Models + Generator</div>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Main Model Tab Content */}
@@ -192,13 +295,14 @@ export const LabEval2Container: React.FC = () => {
         )}
 
         {activeModelTab === 'gan-cnn-lstm' && (
-          <GanCnnLstmPlaceholder onBackToGanCnn={() => setActiveModelTab('gan-cnn')} />
+          <GanCnnLstmPage onNavigateToTab={setActiveModelTab} />
         )}
 
         {activeModelTab === 'gan-mobilenetv2' && (
-          <GanMobileNetV2Placeholder onBackToGanCnn={() => setActiveModelTab('gan-cnn')} />
+          <GanMobileNetV2Page onNavigateToTab={setActiveModelTab} />
         )}
       </main>
     </div>
   );
 };
+
