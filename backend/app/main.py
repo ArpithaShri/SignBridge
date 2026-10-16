@@ -32,6 +32,7 @@ logging.basicConfig(
 logger = logging.getLogger("signbridge.api")
 
 
+# Startup Lifespan: Pre-loads available models once into memory
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Pre-load available models once
