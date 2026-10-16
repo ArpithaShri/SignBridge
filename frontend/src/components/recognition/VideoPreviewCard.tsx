@@ -41,7 +41,7 @@ export const VideoPreviewCard = ({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
           <Film size={18} style={{ color: 'var(--brand-400)' }} />
-          <h4 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#fff' }}>Selected Video Clip</h4>
+          <h4 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>Selected Video Clip</h4>
         </div>
         <span className="badge badge-success">
           <CheckCircle2 size={13} />
@@ -65,7 +65,7 @@ export const VideoPreviewCard = ({
         ) : (
           <div className="video-unsupported-notice">
             <AlertTriangle size={36} style={{ color: 'var(--accent-amber)' }} />
-            <h5 style={{ color: '#fff', fontSize: '0.95rem' }}>Codec Not Supported for In-Browser Playback</h5>
+            <h5 style={{ color: 'var(--text-primary)', fontSize: '0.95rem' }}>Codec Not Supported for In-Browser Playback</h5>
             <p style={{ fontSize: '0.8rem', maxWidth: '340px' }}>
               Your browser cannot decode this <code>.{extension}</code> codec natively. However, the file is valid and
               the backend OpenCV pipeline will extract all 33 frames during inference.

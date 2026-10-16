@@ -44,7 +44,7 @@ export const RecognitionPlaceholder: React.FC<RecognitionPlaceholderProps> = ({ 
           <UploadCloud size={32} />
         </div>
 
-        <h3 style={{ fontSize: '1.4rem', marginBottom: '0.75rem', color: '#fff' }}>
+        <h3 style={{ fontSize: '1.4rem', marginBottom: '0.75rem', color: 'var(--text-primary)' }}>
           Drag & Drop ISL Video (.MOV, .MP4)
         </h3>
         <p style={{ maxWidth: '480px', margin: '0 auto 1.5rem', color: 'var(--text-secondary)' }}>

@@ -41,7 +41,7 @@ export const VocabularyPreview: React.FC = () => {
           </div>
         ))}
         {selectedCategory === 'All' && (
-          <div className="vocab-word-tag" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--brand-400)' }}>
+          <div className="vocab-word-tag" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--brand-500)' }}>
             <span>+ 23 additional balanced classes across full 76 set</span>
           </div>
         )}

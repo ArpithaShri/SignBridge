@@ -100,13 +100,13 @@ export const AgreementAnalysisSection = ({ analysis }: AgreementAnalysisSectionP
                   </td>
 
                   <td>
-                    <span className="table-acc-badge" style={{ color: meta.isBestPerformer ? 'var(--brand-400)' : '#fff' }}>
+                    <span className="table-acc-badge" style={{ color: meta.isBestPerformer ? 'var(--brand-400)' : 'var(--text-primary)' }}>
                       {meta.testAccuracy.toFixed(2)}%
                     </span>
                   </td>
 
                   <td>
-                    <strong style={{ color: '#fff', fontSize: '0.95rem' }}>
+                    <strong style={{ color: 'var(--text-primary)', fontSize: '0.95rem' }}>
                       {pred.predictedWord}
                     </strong>
                   </td>

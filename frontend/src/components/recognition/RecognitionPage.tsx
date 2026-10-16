@@ -213,11 +213,11 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
           onClick={() => { setShowWebcam((v) => !v); }}
           style={{
             background: showWebcam
-              ? 'linear-gradient(135deg, rgba(99,102,241,0.28) 0%, rgba(139,92,246,0.18) 100%)'
-              : 'rgba(255,255,255,0.03)',
+              ? 'var(--brand-glow-subtle, rgba(99,102,241,0.18))'
+              : 'var(--bg-card)',
             border: showWebcam
-              ? '1.5px solid rgba(99,102,241,0.6)'
-              : '1.5px dashed rgba(255,255,255,0.14)',
+              ? '1.5px solid var(--brand-500)'
+              : '1.5px dashed var(--border-medium)',
             borderRadius: '12px',
             padding: '1.1rem 1.25rem',
             cursor: 'pointer',
@@ -226,7 +226,7 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
             gap: '0.85rem',
             textAlign: 'left',
             transition: 'all 0.2s ease',
-            color: '#fff'
+            color: 'var(--text-primary)'
           }}
         >
           <div
@@ -235,19 +235,19 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
               height: 44,
               borderRadius: '50%',
               background: showWebcam
-                ? 'rgba(99,102,241,0.35)'
-                : 'rgba(99,102,241,0.15)',
+                ? 'rgba(99,102,241,0.25)'
+                : 'rgba(99,102,241,0.12)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               flexShrink: 0,
-              border: '1px solid rgba(99,102,241,0.4)'
+              border: '1px solid var(--border-glow)'
             }}
           >
             <Camera size={20} style={{ color: 'var(--brand-400)' }} />
           </div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: '0.925rem', color: showWebcam ? 'var(--brand-400)' : '#fff' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.925rem', color: showWebcam ? 'var(--brand-500)' : 'var(--text-primary)' }}>
               {showWebcam ? 'Hide Camera ↑' : '🎥 Record via Webcam'}
             </div>
             <div style={{ fontSize: '0.775rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
@@ -258,22 +258,22 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
 
         {/* OR Divider */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-          <div style={{ width: 1, flex: 1, background: 'rgba(255,255,255,0.08)' }} />
+          <div style={{ width: 1, flex: 1, background: 'var(--border-medium)' }} />
           <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontWeight: 600, letterSpacing: '0.08em' }}>OR</span>
-          <div style={{ width: 1, flex: 1, background: 'rgba(255,255,255,0.08)' }} />
+          <div style={{ width: 1, flex: 1, background: 'var(--border-medium)' }} />
         </div>
 
         {/* Option B: Upload file */}
         <div
           style={{
-            background: 'rgba(255,255,255,0.03)',
-            border: '1.5px dashed rgba(255,255,255,0.14)',
+            background: 'var(--bg-card)',
+            border: '1.5px dashed var(--border-medium)',
             borderRadius: '12px',
             padding: '1.1rem 1.25rem',
             display: 'flex',
             alignItems: 'center',
             gap: '0.85rem',
-            color: '#fff'
+            color: 'var(--text-primary)'
           }}
         >
           <div
@@ -292,7 +292,7 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
             <FileVideo size={20} style={{ color: 'var(--accent-cyan)' }} />
           </div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: '0.925rem' }}>📂 Upload a Video File</div>
+            <div style={{ fontWeight: 700, fontSize: '0.925rem', color: 'var(--text-primary)' }}>📂 Upload a Video File</div>
             <div style={{ fontSize: '0.775rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
               .MOV, .MP4, .AVI — drag & drop or browse below
             </div>
@@ -372,9 +372,9 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '0.6rem',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  border: '1px solid var(--border-subtle)',
                   borderRadius: '12px',
-                  background: 'rgba(255, 255, 255, 0.02)'
+                  background: 'var(--bg-tertiary)'
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -383,7 +383,7 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
                     style={{
                       fontSize: '0.825rem',
                       fontWeight: 700,
-                      color: '#fff',
+                      color: 'var(--text-primary)',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.4rem',
@@ -407,16 +407,13 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
                   value={selectedModel}
                   onChange={(e) => setSelectedModel(e.target.value)}
                   disabled={isAnalyzing}
+                  className="lab2-select"
                   style={{
                     width: '100%',
                     padding: '0.6rem 0.85rem',
                     borderRadius: '8px',
-                    background: 'rgba(15, 23, 42, 0.85)',
-                    border: '1.5px solid rgba(99, 102, 241, 0.4)',
-                    color: '#fff',
                     fontSize: '0.875rem',
                     fontWeight: 500,
-                    outline: 'none',
                     cursor: 'pointer'
                   }}
                 >
@@ -477,7 +474,7 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
           {isAnalyzing ? (
             <div className="glass-card recognition-loading-card fade-in">
               <div className="loading-spinner-ring" />
-              <h4 style={{ color: '#fff', fontSize: '1.2rem', margin: 0 }}>
+              <h4 style={{ color: 'var(--text-primary)', fontSize: '1.2rem', margin: 0 }}>
                 Processing Video Frames
               </h4>
               <p style={{ maxWidth: '360px', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
@@ -533,16 +530,17 @@ export const RecognitionPage = ({ onNavigate }: RecognitionPageProps) => {
                   width: '54px',
                   height: '54px',
                   borderRadius: '50%',
-                  background: 'rgba(255, 255, 255, 0.04)',
+                  background: 'var(--bg-tertiary)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  color: 'var(--text-tertiary)'
+                  color: 'var(--brand-400)',
+                  border: '1px solid var(--border-subtle)'
                 }}
               >
                 <Sparkles size={24} />
               </div>
-              <h4 style={{ color: '#fff', fontSize: '1.1rem', margin: 0 }}>
+              <h4 style={{ color: 'var(--text-primary)', fontSize: '1.1rem', margin: 0 }}>
                 {selectedFile ? 'Ready to Perform Inference' : 'No Video Selected Yet'}
               </h4>
               <p style={{ maxWidth: '380px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>

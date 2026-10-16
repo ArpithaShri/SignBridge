@@ -318,12 +318,12 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
         flexDirection: 'column',
         gap: '1rem',
         padding: '1.25rem 1.5rem',
-        border: '1.5px solid rgba(99,102,241,0.4)',
-        background: 'rgba(15, 23, 42, 0.92)',
+        border: '1.5px solid var(--border-glow)',
+        background: 'var(--bg-card)',
         backdropFilter: 'blur(16px)',
         borderRadius: '16px',
         position: 'relative',
-        boxShadow: '0 12px 36px rgba(0,0,0,0.45)'
+        boxShadow: 'var(--shadow-md)'
       }}
     >
       {/* Header with Camera Selector and Controls */}
@@ -338,13 +338,13 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              border: '1px solid rgba(99,102,241,0.35)'
+              border: '1px solid var(--border-glow)'
             }}
           >
             <Camera size={18} style={{ color: 'var(--brand-400)' }} />
           </div>
           <div>
-            <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.95rem' }}>
+            <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>
               Live Camera Gesture Recorder
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
@@ -387,11 +387,9 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
               value={selectedDeviceId}
               onChange={(e) => handleDeviceChange(e.target.value)}
               disabled={state === 'recording'}
+              className="lab2-select"
               style={{
-                background: 'rgba(15, 23, 42, 0.95)',
-                border: '1px solid rgba(99,102,241,0.4)',
                 borderRadius: '8px',
-                color: '#fff',
                 padding: '0.35rem 0.65rem',
                 fontSize: '0.775rem',
                 maxWidth: '220px',
@@ -412,8 +410,8 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
             onClick={() => startCamera()}
             title="Refresh camera stream"
             style={{
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.12)',
+              background: 'var(--bg-tertiary)',
+              border: '1px solid var(--border-subtle)',
               color: 'var(--text-secondary)',
               borderRadius: '8px',
               padding: '0.35rem 0.65rem',
@@ -433,8 +431,8 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
             type="button"
             onClick={handleClose}
             style={{
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.12)',
+              background: 'var(--bg-tertiary)',
+              border: '1px solid var(--border-subtle)',
               color: 'var(--text-secondary)',
               borderRadius: '8px',
               padding: '0.35rem 0.65rem',
@@ -456,20 +454,20 @@ export const WebcamRecorder = ({ onRecordingComplete, onClose }: WebcamRecorderP
         <div
           style={{
             padding: '0.75rem 1rem',
-            background: 'rgba(245, 158, 11, 0.15)',
-            border: '1px solid rgba(245, 158, 11, 0.4)',
+            background: 'var(--status-warning-bg)',
+            border: '1px solid var(--status-warning-border)',
             borderRadius: '10px',
-            color: '#fef3c7',
+            color: 'var(--status-warning-text)',
             fontSize: '0.825rem',
             display: 'flex',
             alignItems: 'flex-start',
             gap: '0.65rem'
           }}
         >
-          <AlertTriangle size={18} style={{ color: '#fbbf24', flexShrink: 0, marginTop: '2px' }} />
+          <AlertTriangle size={18} style={{ color: 'var(--accent-amber)', flexShrink: 0, marginTop: '2px' }} />
           <div>
-            <strong>Webcam sensor is muted / privacy shutter is closed:</strong>
-            <p style={{ margin: '0.2rem 0 0 0', color: '#fde68a', fontSize: '0.775rem' }}>
+            <strong style={{ color: 'var(--status-warning-text)' }}>Webcam sensor is muted / privacy shutter is closed:</strong>
+            <p style={{ margin: '0.2rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.775rem' }}>
               Your laptop’s physical camera privacy slider is covering the lens, or your camera toggle key (e.g. F8 / F10 / Fn+F6) or Windows Camera Privacy is off. Open the lens slider to see your video feed.
             </p>
           </div>

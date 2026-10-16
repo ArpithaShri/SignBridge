@@ -35,11 +35,12 @@ export const RecognitionResultCard = ({ result }: RecognitionResultCardProps) =>
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '0.65rem 1rem',
-            background: 'rgba(16, 185, 129, 0.08)',
-            border: '1px solid rgba(16, 185, 129, 0.25)',
+            background: 'var(--status-success-bg)',
+            border: '1px solid var(--status-success-border)',
             borderRadius: 'var(--radius-md)',
-            color: '#a7f3d0',
-            fontSize: '0.8rem'
+            color: 'var(--status-success-text)',
+            fontSize: '0.8rem',
+            fontWeight: 600
           }}
         >
           <span>✓ Real Neural Inference via Trained Keras Model</span>
@@ -88,7 +89,7 @@ export const RecognitionResultCard = ({ result }: RecognitionResultCardProps) =>
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: 'rgba(0, 0, 0, 0.25)',
+          background: 'var(--bg-tertiary)',
           padding: '0.85rem 1rem',
           borderRadius: 'var(--radius-md)',
           border: '1px solid var(--border-subtle)',
@@ -99,7 +100,7 @@ export const RecognitionResultCard = ({ result }: RecognitionResultCardProps) =>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
           <Award size={18} style={{ color: 'var(--brand-400)' }} />
           <div>
-            <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#fff' }}>
+            <div style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               {result.modelUsed.name}
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>

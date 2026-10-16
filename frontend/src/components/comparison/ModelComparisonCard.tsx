@@ -34,7 +34,7 @@ export const ModelComparisonCard = ({
           <h3 className="comparison-model-title">{modelMeta.name}</h3>
 
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', marginTop: '0.2rem' }}>
-            <span style={{ fontSize: '1.25rem', fontWeight: 800, color: isBest ? 'var(--brand-400)' : '#fff' }}>
+            <span style={{ fontSize: '1.25rem', fontWeight: 800, color: isBest ? 'var(--brand-500)' : 'var(--text-primary)' }}>
               {modelMeta.testAccuracy.toFixed(2)}%
             </span>
             <span style={{ fontSize: '0.725rem', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>
@@ -43,7 +43,7 @@ export const ModelComparisonCard = ({
           </div>
 
           {isBest && (
-            <p style={{ fontSize: '0.725rem', color: 'var(--brand-400)', margin: '0.2rem 0 0' }}>
+            <p style={{ fontSize: '0.725rem', color: 'var(--brand-500)', margin: '0.2rem 0 0' }}>
               *Best overall test benchmark; not assumed superior on every single clip.
             </p>
           )}

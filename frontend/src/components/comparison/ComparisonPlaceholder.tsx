@@ -38,7 +38,7 @@ export const ComparisonPlaceholder: React.FC<ComparisonPlaceholderProps> = ({ on
                 </span>
               )}
             </div>
-            <h4 style={{ fontSize: '1.2rem', marginBottom: '0.5rem', color: '#fff' }}>{m.name}</h4>
+            <h4 style={{ fontSize: '1.2rem', marginBottom: '0.5rem', color: 'var(--text-primary)' }}>{m.name}</h4>
             <div style={{ fontSize: '1.5rem', fontWeight: 800, color: m.isBestPerformer ? 'var(--brand-400)' : 'var(--text-primary)', marginBottom: '0.5rem' }}>
               {m.testAccuracy}%
               <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginLeft: '0.35rem', fontWeight: 500 }}>Test Acc</span>
@@ -46,9 +46,9 @@ export const ComparisonPlaceholder: React.FC<ComparisonPlaceholderProps> = ({ on
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
               {m.tagline}
             </p>
-            <div style={{ background: 'rgba(0,0,0,0.3)', padding: '0.75rem', borderRadius: '6px', fontSize: '0.75rem' }}>
+            <div style={{ background: 'var(--bg-tertiary)', padding: '0.75rem', borderRadius: '6px', fontSize: '0.75rem', border: '1px solid var(--border-subtle)' }}>
               <div style={{ color: 'var(--text-tertiary)', marginBottom: '0.25rem' }}>Planned Output:</div>
-              <div style={{ color: '#fff', fontFamily: 'var(--font-mono)' }}>Predicted ISL Word, Confidence Score, Inference Latency</div>
+              <div style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>Predicted ISL Word, Confidence Score, Inference Latency</div>
             </div>
           </div>
         ))}

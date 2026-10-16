@@ -101,7 +101,7 @@ export const ComparisonPage = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
           <Film size={20} style={{ color: 'var(--brand-400)' }} />
           <div>
-            <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#fff' }}>
+            <div style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               Active Video Sequence: <code style={{ color: 'var(--brand-400)' }}>{selectedFile?.name || 'None selected'}</code>
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
@@ -178,17 +178,17 @@ export const ComparisonPage = () => {
           display: 'flex',
           alignItems: 'center',
           gap: '0.85rem',
-          border: '1px solid rgba(16, 185, 129, 0.3)',
-          background: 'rgba(16, 185, 129, 0.06)',
+          border: '1px solid var(--status-success-border)',
+          background: 'var(--status-success-bg)',
           borderRadius: '12px'
         }}
       >
         <CheckCircle2 size={22} style={{ flexShrink: 0, color: 'var(--accent-emerald)' }} />
         <div>
-          <strong style={{ color: '#fff', display: 'block', marginBottom: '2px', fontSize: '0.9rem' }}>
+          <strong style={{ color: 'var(--status-success-text)', display: 'block', marginBottom: '2px', fontSize: '0.9rem' }}>
             Live Tri-Model Neural Evaluation Active
           </strong>
-          <p style={{ margin: 0, fontSize: '0.8rem', color: '#cbd5e1' }}>
+          <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
             Predictions, softmax candidate distributions, and latencies are computed concurrently by the FastAPI backend
             running trained MobileNetV2 (Frozen Backbone), Custom 2D CNN, and CNN-LSTM Keras checkpoints.
           </p>
