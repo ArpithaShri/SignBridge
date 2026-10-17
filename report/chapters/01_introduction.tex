@@ -1,0 +1,85 @@
+\chapter{Introduction}
+\label{ch:intro}
+
+\section{Background}
+\label{sec:background}
+Sign language constitutes a fully realized, natural linguistic system with its own complex grammar, syntax, and spatial vocabulary, serving as the primary medium of expression and intellectual communication for millions of deaf and hard-of-hearing individuals worldwide. In India, an estimated 5 to 10 million individuals rely on Indian Sign Language (ISL) to communicate daily \cite{kumar2018indian}. Unlike spoken languages which encode semantics into acoustic sequences, sign language conveys lexical concepts through a multi-channel visual-gestural medium. This visual channel combines manual articulators---such as handshape, palm orientation, spatial location, and dynamic movement trajectories---with non-manual signals including facial expressions, gaze direction, and head or upper-body postures \cite{rastgoo2021sign, adaloglou2022comprehensive}.
+
+Despite the ubiquity and linguistic richness of ISL, a profound societal communication divide persists between the deaf community and the hearing majority. Most individuals in public administrations, healthcare facilities, educational institutions, commercial establishments, and workplaces do not possess basic sign literacy. Concurrently, certified professional ISL interpreters remain scarce, expensive, and geographically concentrated in major urban centers. As a result, deaf individuals consistently face systemic communication barriers, educational marginalization, and restricted socioeconomic participation.
+
+Automating the translation of sign language into textual or spoken language through computer vision and artificial intelligence represents a transformative technological intervention. By enabling automated, real-time recognition of sign language gestures directly from consumer-grade camera video streams, computer vision systems can serve as accessible bridges for inclusive communication \cite{starner1998real, camgoz2018neural}.
+
+\section{Problem Statement}
+\label{sec:problem_statement}
+Dynamic sign language video recognition presents severe computational and machine learning challenges that exceed those encountered in standard image classification or broad human action recognition:
+\begin{enumerate}
+    \item \textbf{High Inter-Class Similarity and Intra-Class Variability}: In a large sign vocabulary, many words share identical gross motion paths and differ solely in subtle finger articulation or palm tilt (minimal pairs). Conversely, different signers exhibit wide variability in physical hand size, signing velocity, range of motion, and personal cadence.
+    \item \textbf{Complex Temporal Dynamics}: Unlike static finger-spelling gestures that can be recognized from isolated still photographs, dynamic ISL word classes involve non-linear movement phases, comprising preparation, stroke (the core lexical phase), and retraction. Capturing these temporal transitions requires temporal sequence modelling rather than isolated frame evaluation.
+    \item \textbf{Severe Scarcity of Video Data}: High-quality, professionally verified sign language datasets are orders of magnitude smaller than mainstream image benchmarks like ImageNet \cite{deng2009imagenet} or action video datasets like Kinetics \cite{carreira2017quo}. Training deep visual neural networks from scratch on limited video clips typically induces severe overfitting or complete optimization failure.
+    \item \textbf{Unconstrained Inference Environments}: Real-world assistive tools must operate across diverse lighting conditions, varied backgrounds, mobile device webcams, and user hardware without prohibitive inference latency or expensive server infrastructure.
+\end{enumerate}
+
+The specific problem addressed in this case study is: \textit{How can an automated deep learning framework effectively and efficiently recognize dynamic Indian Sign Language word classes across a vocabulary of 76 discrete signs from short video clips under data-constrained conditions, and how can such an engine be deployed into an interactive, low-latency web application accessible to end users?}
+
+\section{Motivation}
+\label{sec:motivation}
+The motivation underlying this project is both societal and technical. From a societal standpoint, creating assistive communication technologies that facilitate equitable social, educational, and professional inclusion for deaf individuals is an urgent accessibility objective. 
+
+From a technical standpoint, dynamic sign recognition lies at the intersection of spatial feature representation and temporal sequence integration. Prior research frequently relies on specialized hardware such as wearable sensor gloves or structured depth cameras (e.g., Microsoft Kinect), which are intrusive, expensive, and impractical for widespread daily usage. Developing a recognition system that relies exclusively on standard monocular 2D RGB video clips provides maximum real-world accessibility. 
+
+Furthermore, investigating how transfer-learning spatial architectures compare against scratch-trained 2D convolutional networks and recurrent spatio-temporal models (such as CNN-LSTMs) across a 76-class vocabulary provides critical empirical insights into the sample efficiency and architectural viability of deep learning models under realistic data constraints.
+
+\section{Objectives}
+\label{sec:objectives}
+The core objectives of the SignBridge project are defined as follows:
+\begin{enumerate}
+    \item \textbf{Dataset Organization and Preprocessing Pipeline}: Curate and standardize a 76-class dynamic ISL video dataset comprising 1,166 video samples into structured training (806 clips), validation (180 clips), and held-out test splits (180 clips). Implement an OpenCV-based uniform temporal sampling algorithm that extracts exactly 33 representative frames per clip regardless of raw video frame rate or duration.
+    \item \textbf{Model Exploration and Architecture Implementation}: Implement and train three foundational deep learning architectures for sign recognition:
+    \begin{itemize}
+        \item A transfer-learning \textbf{MobileNetV2} model utilizing a frozen ImageNet-pretrained backbone with a custom classification head and temporal probability averaging.
+        \item A baseline \textbf{Custom 2D Convolutional Neural Network} trained entirely from scratch with data augmentation.
+        \item A spatio-temporal \textbf{CNN-LSTM} model pairing TimeDistributed convolutional feature extractors with a Long Short-Term Memory recurrent network.
+    \end{itemize}
+    \item \textbf{Systematic Empirical Evaluation}: Conduct rigorous evaluation on an identical 180-video held-out test set using standardized evaluation metrics, including top-1 classification accuracy, Macro $F_1$-score, inference latency, and multi-model late fusion.
+    \item \textbf{Full-Stack Production System Development}: Build and deploy a scalable, high-performance web application consisting of a FastAPI REST backend with in-memory singleton model weight caching and a modern, responsive React 19 / TypeScript frontend supporting local video file ingestion, real-time HTML5 webcam recording, and tri-model consensus comparison.
+\end{enumerate}
+
+\section{Scope of the Project}
+\label{sec:scope}
+The scope of this project encompasses:
+\begin{itemize}
+    \item Recognition of \textbf{76 discrete, isolated Indian Sign Language word classes} spanning common greetings, interpersonal relations, temporal units, nouns, actions, and descriptive adjectives.
+    \item Ingestion of standard monocular RGB video files in QuickTime (\texttt{.MOV}), MPEG-4 (\texttt{.mp4}), AVI (\texttt{.avi}), and WebM (\texttt{.webm}) containers up to 100\,MB in file size.
+    \item In-browser dynamic video capture using standard user webcams via HTML5 \texttt{MediaDevices} and \texttt{MediaRecorder} APIs.
+    \item Evaluation of the original SignBridge deep learning models trained on the verified 76-class dataset.
+\end{itemize}
+
+\paragraph{Exclusions from Project Scope:} Continuous sentence-level sign language translation, automatic fingerspelling translation of arbitrary character strings, and generative data augmentation experiments (such as GAN-based synthetic sample generation or experimental Lab Evaluation 2 modules) are strictly excluded from the scope of this case study report, which focuses solely on the original implemented SignBridge architecture and verified benchmarks.
+
+\section{Contributions}
+\label{sec:contributions}
+The primary contributions of this project and report include:
+\begin{enumerate}
+    \item \textbf{End-to-End ISL Recognition Architecture}: A fully integrated, functional hardware-agnostic platform capable of ingesting raw RGB video clips and producing top-1 recognized words, top-5 probability distributions, and measured execution latencies.
+    \item \textbf{Rigorous Comparative Evaluation}: An empirical benchmarking of transfer learning versus scratch-trained 2D convolutional and recurrent architectures across 76 ISL word classes, revealing the definitive superiority of frozen pre-trained backbones (67.78\% test accuracy) over scratch models ($<5.00\%$).
+    \item \textbf{Cross-Model Consensus and Agreement Engine}: Implementation of an automated comparison framework that evaluates an identical video sequence across multiple architectures in parallel, analyzing agreement count and consensus reliability.
+    \item \textbf{Production-Grade Low-Latency Backend}: Development of a FastAPI service that guarantees in-memory model persistence, avoiding redundant model deserialization overhead on per-request inference.
+    \item \textbf{Accessible Modern User Interface}: A modular React 19 frontend implementing an interactive dashboard, video preview player, live webcam recorder with countdown timers, and glassmorphic UI design tokens.
+\end{enumerate}
+
+\section{Organization of the Report}
+\label{sec:organization}
+The remainder of this report is organized as follows:
+\begin{itemize}
+    \item \textbf{Chapter \ref{ch:literature}} presents a literature review covering sign language recognition, convolutional neural networks, transfer learning, and recurrent temporal sequence modelling.
+    \item \textbf{Chapter \ref{ch:requirements}} analyzes domain challenges, functional and non-functional requirements, and hardware/software specifications.
+    \item \textbf{Chapter \ref{ch:architecture}} details the overall system architecture, frontend and backend design, data flow, and API communication.
+    \item \textbf{Chapter \ref{ch:dataset}} describes the 76-class ISL dataset, vocabulary structure, data splits, uniform frame sampling, and preprocessing routines.
+    \item \textbf{Chapter \ref{ch:methodology}} explains the mathematical foundations and architectural configurations of the MobileNetV2, Custom CNN, and CNN-LSTM models.
+    \item \textbf{Chapter \ref{ch:implementation}} details the software implementation of the frontend, backend, webcam capture, and API endpoints.
+    \item \textbf{Chapter \ref{ch:experiments}} presents the empirical evaluation setup, verified benchmark results, comparative metrics, and error analyses.
+    \item \textbf{Chapter \ref{ch:discussion}} discusses key findings, architectural tradeoffs, and practical deployment considerations.
+    \item \textbf{Chapter \ref{ch:challenges}} outlines observed technical challenges and limitations encountered during implementation.
+    \item \textbf{Chapter \ref{ch:conclusion}} summarizes the project findings and proposes concrete directions for future work.
+    \item \textbf{Appendices} provide supplementary API documentation, environment configuration, and execution instructions.
+\end{itemize}

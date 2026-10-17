@@ -1,0 +1,171 @@
+\chapter{Dataset and Preprocessing}
+\label{ch:dataset}
+
+\section{Dataset Description}
+\label{sec:dataset_description}
+The SignBridge deep learning models are trained and evaluated on a structured, multi-class video dataset comprising isolated dynamic Indian Sign Language (ISL) gestures. Each video recording captures an individual signer performing a single sign gesture against indoor backgrounds. The primary recording format is QuickTime Movie (\texttt{.MOV}) and MPEG-4 (\texttt{.mp4}) containers, recorded at standard video resolutions (e.g., $1920\times1080$ or $1280\times720$ pixels) at nominal framerates ranging from 24 to 30 frames per second. Video durations typically span between 1.5 and 4.0 seconds, capturing the full gestural envelope: the initial rest position, movement of hands toward the signing space (preparation), the primary lexical articulation (stroke), and return to rest (retraction).
+
+\section{Vocabulary and Class Labels}
+\label{sec:vocabulary_labels}
+The dataset encompasses \textbf{76 discrete lexical sign classes} representing essential daily communication vocabulary in Indian Sign Language. These words span temporal terms, interpersonal and social descriptors, clothing, animals, and common qualitative adjectives and antonym pairs.
+
+Table \ref{tab:verified_classes} lists the complete, verified 76-class vocabulary in alphabetical and integer index order, as encoded in the project's ground-truth mapping artifact (\texttt{backend/artifacts/mobilenetv2\_frozen/class\_mapping.json}).
+
+\begin{table}[htbp]
+\centering
+\caption{Complete 76-class Indian Sign Language vocabulary mapping utilized in SignBridge.}
+\label{tab:verified_classes}
+\scriptsize
+\begin{tabularx}{\textwidth}{c l c l c l c l}
+\toprule
+\textbf{Index} & \textbf{Word} & \textbf{Index} & \textbf{Word} & \textbf{Index} & \textbf{Word} & \textbf{Index} & \textbf{Word} \\
+\midrule
+0 & \texttt{afternoon} & 19 & \texttt{famous} & 38 & \texttt{month} & 57 & \texttt{small} \\
+1 & \texttt{animal} & 20 & \texttt{fast} & 39 & \texttt{morning} & 58 & \texttt{suit} \\
+2 & \texttt{bad} & 21 & \texttt{female} & 40 & \texttt{mouse} & 59 & \texttt{sunday} \\
+3 & \texttt{beautiful} & 22 & \texttt{fish} & 41 & \texttt{narrow} & 60 & \texttt{t\_shirt} \\
+4 & \texttt{big} & 23 & \texttt{flat} & 42 & \texttt{new} & 61 & \texttt{tall} \\
+5 & \texttt{bird} & 24 & \texttt{friday} & 43 & \texttt{night} & 62 & \texttt{thursday} \\
+6 & \texttt{blind} & 25 & \texttt{good} & 44 & \texttt{old} & 63 & \texttt{time} \\
+7 & \texttt{cat} & 26 & \texttt{happy} & 45 & \texttt{pant} & 64 & \texttt{today} \\
+8 & \texttt{cheap} & 27 & \texttt{hat} & 46 & \texttt{pocket} & 65 & \texttt{tomorrow} \\
+9 & \texttt{clothing} & 28 & \texttt{healthy} & 47 & \texttt{quiet} & 66 & \texttt{tuesday} \\
+10 & \texttt{cold} & 29 & \texttt{horse} & 48 & \texttt{sad} & 67 & \texttt{ugly} \\
+11 & \texttt{cow} & 30 & \texttt{hot} & 49 & \texttt{saturday} & 68 & \texttt{warm} \\
+12 & \texttt{curved} & 31 & \texttt{hour} & 50 & \texttt{second} & 69 & \texttt{wednesday} \\
+13 & \texttt{deaf} & 32 & \texttt{light} & 51 & \texttt{shirt} & 70 & \texttt{week} \\
+14 & \texttt{dog} & 33 & \texttt{long} & 52 & \texttt{shoes} & 71 & \texttt{wet} \\
+15 & \texttt{dress} & 34 & \texttt{loose} & 53 & \texttt{short} & 72 & \texttt{wide} \\
+16 & \texttt{dry} & 35 & \texttt{loud} & 54 & \texttt{sick} & 73 & \texttt{year} \\
+17 & \texttt{evening} & 36 & \texttt{minute} & 55 & \texttt{skirt} & 74 & \texttt{yesterday} \\
+18 & \texttt{expensive} & 37 & \texttt{monday} & 56 & \texttt{slow} & 75 & \texttt{young} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Dataset Organization}
+\label{sec:dataset_organization}
+The raw dataset is organized hierarchically by class label, where each subdirectory corresponds to a specific lexical class name containing the associated video files recorded by various signers. Video clips are stored with uniform naming conventions. Across all 76 classes, the dataset comprises a total of \textbf{1,166 video recordings}. This corresponds to an average of approximately 15.3 video samples per class, illustrating the modest sample count available for training deep learning models relative to the vocabulary size.
+
+\section{Training, Validation, and Test Splits}
+\label{sec:dataset_splits}
+To ensure rigorous and unbiased evaluation, the 1,166 video samples are partitioned into strictly disjoint training, validation, and held-out test subsets. The partitioning scheme maintains consistent class representation across all three splits, as detailed in Table \ref{tab:dataset_splits}.
+
+\begin{table}[htbp]
+\centering
+\caption{Dataset partitioning across training, validation, and test splits.}
+\label{tab:dataset_splits}
+\small
+\begin{tabularx}{\textwidth}{l r r X}
+\toprule
+\textbf{Split Partition} & \textbf{Video Count} & \textbf{Percentage} & \textbf{Role in the Project} \\
+\midrule
+\textbf{Training Split} & 806 & 69.12\% & Model weight optimization via backpropagation and mini-batch gradient descent. \\
+\textbf{Validation Split} & 180 & 15.44\% & Hyperparameter tuning, learning rate scheduling, and early stopping checkpoint selection. \\
+\textbf{Held-Out Test Split} & 180 & 15.44\% & Final unbiased benchmarking of test accuracy, Macro $F_1$, and multi-model comparison. \\
+\midrule
+\textbf{Total Dataset} & \textbf{1,166} & \textbf{100.00\%} & Complete multi-class ISL video corpus. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Importantly, the 180-video held-out test split is strictly sequestered during model training and hyperparameter search; all test metrics reported in this study reflect performance exclusively on these 180 unseen test clips.
+
+\section{Image and Video Preprocessing}
+\label{sec:image_video_preprocessing}
+Raw video containers represent a challenging input modality due to varying container formats, variable bitrates, and non-standard video dimensions. The preprocessing pipeline implemented in \texttt{backend/app/preprocessing.py} standardizes incoming videos through a robust sequence of transformations:
+\begin{enumerate}
+    \item \textbf{Container Decoding}: Videos are opened using OpenCV's \texttt{cv2.VideoCapture}. If the video header contains valid frame metadata, the total frame count $T$ is read directly. If the container lacks header properties (common in certain web streams or WebM recordings), the pipeline sequentially decodes all readable frames into memory before subsampling.
+    \item \textbf{Color-Space Conversion}: Standard video decoders output frames in BGR (Blue-Green-Red) channel order. Each extracted frame is explicitly converted to standard RGB (Red-Green-Blue) via \texttt{cv2.cvtColor(frame, cv2.COLOR\_BGR2RGB)}.
+    \item \textbf{Spatial Resizing}: Frames are resized to uniform square dimensions using OpenCV's \texttt{cv2.INTER\_AREA} interpolation algorithm:
+    \begin{itemize}
+        \item MobileNetV2 and Custom CNN: Standardized to $224 \times 224$ pixels.
+        \item CNN-LSTM: Standardized to $112 \times 112$ pixels to constrain spatial parameter footprint across the 33-step sequence.
+    \end{itemize}
+    Area-based interpolation is preferred over bilinear or nearest-neighbor interpolation because it avoids moir{\'e} patterns and downsampling artifacts when reducing high-definition ($1080\text{p}$) video frames to small neural input dimensions \cite{bradski2000opencv}.
+\end{enumerate}
+
+\section{Frame Extraction and Temporal Sampling}
+\label{sec:frame_extraction}
+A major architectural decision in video recognition is determining how to sample frames across the temporal axis. Fixed frame-rate sampling (e.g., extracting every 5th frame) fails because signers articulate gestures at varying velocities; a sign executed quickly in 1.2 seconds would yield far fewer frames than a slow 3.5-second gesture, causing variable-length input sequences that complicate batch training.
+
+SignBridge enforces \textbf{Uniform Temporal Linspace Sampling}, extracting exactly $N = 33$ frames per video clip regardless of the raw duration or native frame rate. The frame selection indices $\mathcal{I}$ are computed mathematically via:
+\begin{equation}
+    \mathcal{I} = \left\{ \left\lfloor \frac{i \cdot (T - 1)}{N - 1} \right\rfloor \;\middle|\; i = 0, 1, 2, \dots, N - 1 \right\} \subset \{0, 1, \dots, T - 1\}
+    \label{eq:temporal_indices}
+\end{equation}
+where $T$ represents the total number of frames in the raw video clip, and $N = 33$.
+
+Listing \ref{lst:decode_frames} shows the verified implementation from \texttt{backend/app/preprocessing.py}.
+
+\begin{lstlisting}[language=Python, caption={Uniform 33-frame extraction logic from \texttt{backend/app/preprocessing.py}.}, label={lst:decode_frames}]
+def decode_video_frames(
+    video_path: Union[str, Path],
+    num_frames: int = FRAMES_PER_VIDEO
+) -> List[np.ndarray]:
+    path_str = str(video_path)
+    cap = cv2.VideoCapture(path_str)
+    if not cap.isOpened():
+        cap.release()
+        raise ValueError(f"Cannot open video file: {path_str}")
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    frames = []
+
+    if total_frames <= 0:
+        sequential = []
+        while True:
+            ok, frame = cap.read()
+            if not ok or frame is None:
+                break
+            sequential.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        cap.release()
+        total_frames = len(sequential)
+        indices = np.linspace(0, total_frames - 1, num_frames).astype(int)
+        frames = [sequential[i] for i in indices]
+    else:
+        indices = np.linspace(0, total_frames - 1, num_frames).astype(int)
+        for idx in indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, int(idx))
+            ok, frame = cap.read()
+            if ok and frame is not None:
+                frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        cap.release()
+
+    # Guarantee exact num_frames length via padding if required
+    while len(frames) < num_frames:
+        frames.append(frames[-1].copy())
+
+    return frames[:num_frames]
+\end{lstlisting}
+
+This uniform sampling approach guarantees that:
+\begin{itemize}
+    \item Every video clip is mapped to an identical temporal length ($N = 33$), enabling straightforward tensor batching.
+    \item The temporal trajectory of the gesture (onset, apex stroke, and completion) is sampled proportionally across the entire movement envelope.
+    \item Short and long clips are normalized into a unified relative time scale $t \in [0, 1]$.
+\end{itemize}
+
+\section{Normalization and Input Representation}
+\label{sec:normalization_representation}
+Following frame extraction and spatial resizing, pixel values are formatted into model-specific tensor shapes and numerical domains, as summarized in Table \ref{tab:model_preprocessing_specs}.
+
+\begin{table}[htbp]
+\centering
+\caption{Model-specific tensor shapes, dimensions, and numerical scaling in SignBridge.}
+\label{tab:model_preprocessing_specs}
+\small
+\begin{tabularx}{\textwidth}{l c c c X}
+\toprule
+\textbf{Model Target} & \textbf{Tensor Shape} & \textbf{Resolution} & \textbf{Input Domain} & \textbf{Internal Normalization Scheme} \\
+\midrule
+\textbf{MobileNetV2} & $(33, 224, 224, 3)$ & $224\times224$ & $[0, 255]$ float32 & Internal \texttt{Rescaling} layer: $x \mapsto \frac{x}{127.5} - 1 \in [-1, 1]$. \\
+\addlinespace
+\textbf{Custom 2D CNN} & $(33, 224, 224, 3)$ & $224\times224$ & $[0, 1]$ float32 & Direct division by 255.0 prior to model entry. \\
+\addlinespace
+\textbf{CNN-LSTM} & $(1, 33, 112, 112, 3)$ & $112\times112$ & $[0, 1]$ float32 & Direct division by 255.0; 5D tensor with batch dimension. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+For MobileNetV2, raw pixel values are deliberately preserved in the range $[0, 255]$ during OpenCV preprocessing because the trained model incorporates an explicit Keras \texttt{Rescaling} layer ($x/127.5 - 1$) at the network entrance. For Custom CNN and CNN-LSTM, inputs are explicitly normalized to $[0.0, 1.0]$ by dividing pixel values by $255.0$.

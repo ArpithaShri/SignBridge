@@ -1,0 +1,308 @@
+\chapter{Methodology and Model Implementation}
+\label{ch:methodology}
+
+\section{Overall Recognition Pipeline}
+\label{sec:overall_pipeline}
+The core methodology of SignBridge addresses dynamic Indian Sign Language recognition through a comparative machine learning framework. Recognizing that dynamic sign language conveys meaning through both static hand configurations (spatial features) and gesture trajectories (temporal sequences), three distinct deep learning architectures were designed, trained, and benchmarked on identical 76-class dataset splits:
+\begin{enumerate}
+    \item \textbf{Transfer Learning with Frozen Spatial Backbone}: MobileNetV2 with ImageNet weights, evaluated via multi-frame temporal probability averaging.
+    \item \textbf{Scratch 2D Convolutional Baseline}: A custom 3-block 2D CNN trained from scratch with spatial data augmentation and multi-frame averaging.
+    \item \textbf{Joint Spatio-Temporal Sequential Model}: A CNN-LSTM pairing TimeDistributed convolutional feature extractors with a recurrent Long Short-Term Memory network.
+\end{enumerate}
+
+\section{MobileNetV2 and Transfer Learning}
+\label{sec:mobilenetv2_arch}
+MobileNetV2 \cite{sandler2018mobilenetv2} serves as the primary recognition engine in SignBridge. Rather than training visual feature extractors from scratch on limited sign video data, transfer learning leverages rich generic visual representations acquired by training on the massive ImageNet database \cite{deng2009imagenet}.
+
+\subsection{Architectural Details and Layer Configuration}
+The complete architecture of the implemented MobileNetV2 model (\texttt{SignBridge\_MobileNetV2\_Frozen}) is depicted in Figure \ref{fig:mobilenetv2_arch}.
+
+\begin{figure}[htbp]
+\centering
+\input{figures/model_mobilenetv2.tex}
+\caption{Architectural layout of the MobileNetV2 transfer learning model in SignBridge, showing the frozen ImageNet backbone, custom dense classification head, and multi-frame probability averaging.}
+\label{fig:mobilenetv2_arch}
+\end{figure}
+
+The model comprises four principal functional stages:
+\begin{enumerate}
+    \item \textbf{Input Layer (\texttt{rgb\_frame\_0\_255})}: Accepts 4D RGB frame tensors of shape $(\text{None}, 224, 224, 3)$ with \texttt{float32} values in the raw pixel range $[0, 255]$.
+    \item \textbf{Preprocessing Layer (\texttt{mobilenetv2\_preprocessing})}: An internal Keras \texttt{Rescaling} layer that normalizes input pixel values into the range $[-1.0, 1.0]$ via the linear transformation:
+    \begin{equation}
+        x_{\text{norm}} = \frac{x}{127.5} - 1.0
+        \label{eq:mobilenet_rescale}
+    \end{equation}
+    Embedding this layer directly inside the model graph ensures that inference clients can feed raw $[0, 255]$ frames without external numerical drift.
+    \item \textbf{Frozen Feature Backbone (\texttt{mobilenetv2\_1.00\_224})}: The standard MobileNetV2 architecture with width multiplier $\alpha = 1.0$, initialized with pre-trained ImageNet weights. The backbone contains 155 structural layers consisting of inverted residual blocks with depthwise separable convolutions and linear bottlenecks. All backbone weights are strictly frozen (\texttt{trainable=False}), holding \textbf{2,257,984 parameters} non-trainable. The backbone terminates in a Global Average Pooling 2D operation, producing a compact 1,280-dimensional visual feature embedding.
+    \item \textbf{Custom Trainable Classification Head (\texttt{frozen\_mobilenetv2\_head})}: A sequential classification sub-network attached to the 1,280-dimensional feature output:
+    \begin{itemize}
+        \item \texttt{Dense(256, activation='relu')}: Fully connected layer projecting 1,280 features into 256 dimensions, introducing non-linear feature combination ($1280 \times 256 + 256 = 327,936$ trainable parameters).
+        \item \texttt{Dropout(rate=0.3)}: Regularization layer that randomly zeroes 30\% of hidden units during training to prevent co-adaptation \cite{srivastava2014dropout}.
+        \item \texttt{Dense(76, activation='softmax')}: Terminal classification layer projecting 256 units to 76 class logits transformed into a probability distribution via Softmax ($256 \times 76 + 76 = 19,532$ trainable parameters).
+    \end{itemize}
+\end{enumerate}
+
+Table \ref{tab:mobilenetv2_params} summarizes the verified parameter counts of the MobileNetV2 model artifact (\texttt{mobilenetv2\_frozen\_best.keras}, file size 13.8\,MB).
+
+\begin{table}[htbp]
+\centering
+\caption{Verified layer and parameter summary for MobileNetV2 (Frozen Backbone).}
+\label{tab:mobilenetv2_params}
+\small
+\begin{tabularx}{\textwidth}{l l c r X}
+\toprule
+\textbf{Layer Name} & \textbf{Layer Type} & \textbf{Output Shape} & \textbf{Param \#} & \textbf{Trainable Status} \\
+\midrule
+\texttt{rgb\_frame\_0\_255} & InputLayer & $(\text{None}, 224, 224, 3)$ & 0 & Non-trainable \\
+\texttt{mobilenetv2\_preprocessing} & Rescaling & $(\text{None}, 224, 224, 3)$ & 0 & Non-trainable \\
+\texttt{mobilenetv2\_1.00\_224} & Functional Backbone & $(\text{None}, 1280)$ & 2,257,984 & Frozen (ImageNet) \\
+\texttt{dense} & Dense (ReLU) & $(\text{None}, 256)$ & 327,936 & Trainable \\
+\texttt{dropout} & Dropout ($p=0.3$) & $(\text{None}, 256)$ & 0 & Active in training \\
+\texttt{dense\_1} & Dense (Softmax) & $(\text{None}, 76)$ & 19,532 & Trainable \\
+\midrule
+\textbf{Total Parameters} & \multicolumn{2}{l}{\textbf{2,605,452} (9.94\,MB)} & \multicolumn{2}{l}{\textbf{Trainable: 347,468} (1.33\,MB)} \\
+\textbf{Non-Trainable} & \multicolumn{4}{l}{\textbf{2,257,984} (8.61\,MB, 86.66\% of network)} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Temporal Aggregation Mechanism}
+During inference, a video clip is represented by its 33 uniformly sampled frames $\mathbf{X} = \{I_1, I_2, \dots, I_{33}\} \subset \mathbb{R}^{33 \times 224 \times 224 \times 3}$. The model executes a batched forward pass over all 33 frames simultaneously, producing a sequence of frame-level probability vectors:
+\begin{equation}
+    \mathbf{p}_t = \text{Softmax}(\text{Model}(I_t)) \in \mathbb{R}^{76}, \quad t = 1, 2, \dots, 33
+    \label{eq:frame_prob}
+\end{equation}
+The aggregated video-level probability vector $\bar{\mathbf{p}}$ is computed by averaging the frame-level distributions across the entire temporal sequence:
+\begin{equation}
+    \bar{\mathbf{p}} = \frac{1}{33} \sum_{t=1}^{33} \mathbf{p}_t \in \mathbb{R}^{76}
+    \label{eq:mean_prob}
+\end{equation}
+The predicted lexical sign class $\hat{y}$ is selected via the argmax operator:
+\begin{equation}
+    \hat{y} = \arg\max_{k \in \{0, \dots, 75\}} \bar{p}_k
+    \label{eq:predicted_class}
+\end{equation}
+This multi-frame probability averaging strategy provides strong spatial robustness: noise, motion blur, or partial hand occlusions in isolated frames are smoothly mitigated by confident predictions across the remainder of the clip.
+
+\subsection{Strengths and Limitations}
+\begin{itemize}
+    \item \textbf{Strengths}: Superior sample efficiency on small datasets; frozen pre-trained weights eliminate overfitting; compact model size (13.8\,MB); fast CPU forward pass ($\approx 140$\,ms per 33-frame batch).
+    \item \textbf{Limitations}: Does not model strict temporal ordering or frame velocity transitions; treats the 33 frames as an unordered set during probability averaging.
+\end{itemize}
+
+\section{Custom 2D CNN Architecture (Baseline)}
+\label{sec:custom_cnn_arch}
+To evaluate how effectively a convolutional network can learn sign language features entirely from scratch without external pre-training, a baseline 3-block 2D CNN (\texttt{SignBridge\_CNN}) was implemented.
+
+\subsection{Architectural Details and Layer Configuration}
+The architectural topology of the Custom 2D CNN is illustrated in Figure \ref{fig:custom_cnn_arch}.
+
+\begin{figure}[htbp]
+\centering
+\input{figures/model_custom_cnn.tex}
+\caption{Architectural layout of the Custom 2D CNN baseline in SignBridge, detailing convolutional filter blocks, spatial max-pooling, global average pooling, and classification head.}
+\label{fig:custom_cnn_arch}
+\end{figure}
+
+The network processes 4D tensors of shape $(\text{None}, 224, 224, 3)$ with values normalized into $[0, 1]$ float32:
+\begin{enumerate}
+    \item \textbf{Training Augmentation Sub-network (\texttt{training\_augmentation})}: A sequential data augmentation container active only during training, incorporating:
+    \begin{itemize}
+        \item \texttt{RandomRotation(factor=0.04)}: Slight rotation simulating camera or signer tilt.
+        \item \texttt{RandomZoom(height\_factor=0.08, width\_factor=0.08)}: Simulating minor scale variation.
+        \item \texttt{RandomTranslation(height\_factor=0.06, width\_factor=0.06)}: Spatial jitter.
+    \end{itemize}
+    At inference time, this layer acts as an identity pass-through.
+    \item \textbf{Convolutional Block 1}:
+    \begin{itemize}
+        \item \texttt{conv\_1}: \texttt{Conv2D(32, (3, 3), padding='same', activation='relu')}. Produces $(\text{None}, 224, 224, 32)$ with $(3 \times 3 \times 3 + 1) \times 32 = 896$ parameters.
+        \item \texttt{pool\_1}: \texttt{MaxPooling2D(pool\_size=(2, 2))}. Downsamples spatial resolution to $(\text{None}, 112, 112, 32)$.
+    \end{itemize}
+    \item \textbf{Convolutional Block 2}:
+    \begin{itemize}
+        \item \texttt{conv\_2}: \texttt{Conv2D(64, (3, 3), padding='same', activation='relu')}. Produces $(\text{None}, 112, 112, 64)$ with $(3 \times 3 \times 32 + 1) \times 64 = 18,496$ parameters.
+        \item \texttt{pool\_2}: \texttt{MaxPooling2D(pool\_size=(2, 2))}. Downsamples to $(\text{None}, 56, 56, 64)$.
+    \end{itemize}
+    \item \textbf{Convolutional Block 3}:
+    \begin{itemize}
+        \item \texttt{conv\_3}: \texttt{Conv2D(128, (3, 3), padding='same', activation='relu')}. Produces $(\text{None}, 56, 56, 128)$ with $(3 \times 3 \times 64 + 1) \times 128 = 73,856$ parameters.
+        \item \texttt{pool\_3}: \texttt{MaxPooling2D(pool\_size=(2, 2))}. Downsamples to $(\text{None}, 28, 28, 128)$.
+    \end{itemize}
+    \item \textbf{Global Feature Aggregation}:
+    \begin{itemize}
+        \item \texttt{global\_average\_pooling2d}: Collapses spatial dimensions $(28 \times 28)$ into a single 128-dimensional vector by computing the spatial mean for each channel, avoiding the parameter explosion associated with flattening.
+    \end{itemize}
+    \item \textbf{Dense Classification Head}:
+    \begin{itemize}
+        \item \texttt{dense}: \texttt{Dense(128, activation='relu')}. $128 \times 128 + 128 = 16,512$ parameters.
+        \item \texttt{dropout}: \texttt{Dropout(rate=0.3)}.
+        \item \texttt{word\_classification}: \texttt{Dense(76, activation='softmax')}. $128 \times 76 + 76 = 9,804$ parameters.
+    \end{itemize}
+\end{enumerate}
+
+Table \ref{tab:custom_cnn_params} details the complete layer parameters for the Custom 2D CNN (\texttt{cnn\_baseline\_best.keras}, file size 1.50\,MB).
+
+\begin{table}[htbp]
+\centering
+\caption{Verified layer and parameter summary for Custom 2D CNN (Baseline).}
+\label{tab:custom_cnn_params}
+\small
+\begin{tabularx}{\textwidth}{l l c r X}
+\toprule
+\textbf{Layer Name} & \textbf{Layer Type} & \textbf{Output Shape} & \textbf{Param \#} & \textbf{Description} \\
+\midrule
+\texttt{rgb\_frame} & InputLayer & $(\text{None}, 224, 224, 3)$ & 0 & Normalized $[0, 1]$ RGB frames \\
+\texttt{training\_augmentation} & Sequential & $(\text{None}, 224, 224, 3)$ & 0 & Rotation, zoom, translation (training only) \\
+\texttt{conv\_1} & Conv2D & $(\text{None}, 224, 224, 32)$ & 896 & 32 filters, $3\times3$, ReLU \\
+\texttt{pool\_1} & MaxPooling2D & $(\text{None}, 112, 112, 32)$ & 0 & $2\times2$ spatial max pooling \\
+\texttt{conv\_2} & Conv2D & $(\text{None}, 112, 112, 64)$ & 18,496 & 64 filters, $3\times3$, ReLU \\
+\texttt{pool\_2} & MaxPooling2D & $(\text{None}, 56, 56, 64)$ & 0 & $2\times2$ spatial max pooling \\
+\texttt{conv\_3} & Conv2D & $(\text{None}, 56, 56, 128)$ & 73,856 & 128 filters, $3\times3$, ReLU \\
+\texttt{pool\_3} & MaxPooling2D & $(\text{None}, 28, 28, 128)$ & 0 & $2\times2$ spatial max pooling \\
+\texttt{global\_average\_pooling2d} & GlobalAvgPool2D & $(\text{None}, 128)$ & 0 & Spatial channel averaging \\
+\texttt{dense} & Dense (ReLU) & $(\text{None}, 128)$ & 16,512 & Fully connected hidden layer \\
+\texttt{dropout} & Dropout ($p=0.3$) & $(\text{None}, 128)$ & 0 & Regularization \\
+\texttt{word\_classification} & Dense (Softmax) & $(\text{None}, 76)$ & 9,804 & Output 76-class distribution \\
+\midrule
+\textbf{Total Parameters} & \multicolumn{2}{l}{\textbf{119,564} (467.05\,KB)} & \multicolumn{2}{l}{\textbf{100\% Trainable} (0 non-trainable)} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Strengths and Limitations}
+\begin{itemize}
+    \item \textbf{Strengths}: Minimal parameter footprint (119,564 parameters); ultra-lightweight memory footprint (1.50\,MB on disk); zero reliance on proprietary or external pre-trained visual weights.
+    \item \textbf{Limitations}: Severely underfits on 76 classes due to lack of pre-trained visual primitives; achieves only 5.00\% test accuracy on the 180-video held-out test set; lacks temporal sequence modelling.
+\end{itemize}
+
+\section{CNN-LSTM for Temporal Sequence Modelling}
+\label{sec:cnn_lstm_arch}
+To evaluate explicit temporal sequence modelling, the \textbf{CNN-LSTM Spatio-Temporal Model} (\texttt{sequential\_3}) was developed. This architecture models the hypothesis that dynamic sign gestures are defined by chronological transitions of hand positions over time.
+
+\subsection{Architectural Details and Layer Configuration}
+The complete architecture of the CNN-LSTM model is illustrated in Figure \ref{fig:cnn_lstm_arch}.
+
+\begin{figure}[htbp]
+\centering
+\input{figures/model_cnn_lstm.tex}
+\caption{Architectural layout of the CNN-LSTM spatio-temporal model in SignBridge, detailing TimeDistributed convolutional layers, spatial feature pooling, LSTM recurrence, and classification head.}
+\label{fig:cnn_lstm_arch}
+\end{figure}
+
+The CNN-LSTM ingests a 5D sequence tensor of shape $(\text{None}, 33, 112, 112, 3)$ representing the full 33-frame ordered sequence resized to $112\times112$ RGB pixels and normalized into $[0, 1]$:
+\begin{enumerate}
+    \item \textbf{TimeDistributed Spatial Feature Extraction}: Rather than evaluating frames independently, Keras \texttt{TimeDistributed} wrappers apply identical 2D convolutional and pooling operations across all 33 time steps simultaneously:
+    \begin{itemize}
+        \item \texttt{time\_distributed\_5}: Wraps \texttt{Conv2D(32, (3, 3), padding='same', activation='relu')}. Produces $(\text{None}, 33, 112, 112, 32)$ with 896 parameters.
+        \item \texttt{time\_distributed\_6}: Wraps \texttt{MaxPooling2D(2, 2)}. Downsamples spatial dimensions to $(\text{None}, 33, 56, 56, 32)$.
+        \item \texttt{time\_distributed\_7}: Wraps \texttt{Conv2D(64, (3, 3), padding='same', activation='relu')}. Produces $(\text{None}, 33, 56, 56, 64)$ with 18,496 parameters.
+        \item \texttt{time\_distributed\_8}: Wraps \texttt{MaxPooling2D(2, 2)}. Downsamples spatial dimensions to $(\text{None}, 33, 28, 28, 64)$.
+        \item \texttt{time\_distributed\_9}: Wraps \texttt{GlobalAveragePooling2D()}. Computes the spatial mean across each feature map, outputting an ordered sequence of 33 feature vectors: $(\text{None}, 33, 64)$.
+    \end{itemize}
+    \item \textbf{Recurrent Temporal Integration (\texttt{lstm\_3})}: An LSTM recurrent layer containing 128 hidden units. The layer sequentially processes the 33 feature vectors $(\mathbf{v}_1, \dots, \mathbf{v}_{33})$:
+    \begin{equation}
+        \mathbf{h}_t, \mathbf{c}_t = \text{LSTMCell}(\mathbf{v}_t, \mathbf{h}_{t-1}, \mathbf{c}_{t-1}), \quad t = 1, \dots, 33
+        \label{eq:lstm_recurrence}
+    \end{equation}
+    With \texttt{return\_sequences=False}, the LSTM outputs only the final terminal hidden state $\mathbf{h}_{33} \in \mathbb{R}^{128}$ after observing the entire gesture sequence. The LSTM parameter count is calculated via:
+    \begin{equation}
+        4 \times (d_{\text{in}} \times d_{\text{units}} + d_{\text{units}}^2 + d_{\text{units}}) = 4 \times (64 \times 128 + 128^2 + 128) = 98,816 \text{ parameters}
+        \label{eq:lstm_params}
+    \end{equation}
+    \item \textbf{Classification Head}:
+    \begin{itemize}
+        \item \texttt{dropout\_3}: \texttt{Dropout(rate=0.3)} applied to the 128-dimensional recurrent vector.
+        \item \texttt{dense\_3}: \texttt{Dense(76, activation='softmax')}. Maps 128 hidden units to the 76-class probability distribution ($128 \times 76 + 76 = 9,804$ parameters).
+    \end{itemize}
+\end{enumerate}
+
+Table \ref{tab:cnn_lstm_params} summarizes the layer hierarchy and verified parameters of the CNN-LSTM artifact (\texttt{signbridge\_cnn\_lstm\_best.keras}, file size 1.59\,MB).
+
+\begin{table}[htbp]
+\centering
+\caption{Verified layer and parameter summary for CNN-LSTM Spatio-Temporal Model.}
+\label{tab:cnn_lstm_params}
+\small
+\begin{tabularx}{\textwidth}{l l c r X}
+\toprule
+\textbf{Layer Name} & \textbf{Wrapped Layer / Type} & \textbf{Output Shape} & \textbf{Param \#} & \textbf{Description} \\
+\midrule
+\texttt{time\_distributed\_5} & TimeDistributed(Conv2D 32) & $(\text{None}, 33, 112, 112, 32)$ & 896 & Spatial feature extraction step 1 \\
+\texttt{time\_distributed\_6} & TimeDistributed(MaxPool 2x2) & $(\text{None}, 33, 56, 56, 32)$ & 0 & Spatial downsampling step 1 \\
+\texttt{time\_distributed\_7} & TimeDistributed(Conv2D 64) & $(\text{None}, 33, 56, 56, 64)$ & 18,496 & Spatial feature extraction step 2 \\
+\texttt{time\_distributed\_8} & TimeDistributed(MaxPool 2x2) & $(\text{None}, 33, 28, 28, 64)$ & 0 & Spatial downsampling step 2 \\
+\texttt{time\_distributed\_9} & TimeDistributed(GlobalAvgPool) & $(\text{None}, 33, 64)$ & 0 & Per-frame spatial pooling \\
+\texttt{lstm\_3} & LSTM (128 units) & $(\text{None}, 128)$ & 98,816 & Sequential temporal integration \\
+\texttt{dropout\_3} & Dropout ($p=0.3$) & $(\text{None}, 128)$ & 0 & Regularization \\
+\texttt{dense\_3} & Dense (Softmax) & $(\text{None}, 76)$ & 9,804 & Output 76-class distribution \\
+\midrule
+\textbf{Total Parameters} & \multicolumn{2}{l}{\textbf{128,012} (500.05\,KB)} & \multicolumn{2}{l}{\textbf{100\% Trainable} (0 non-trainable)} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Direct Sequence-Level Output}
+Unlike MobileNetV2 and Custom CNN, which process frames as independent batches and average their predictions, the CNN-LSTM directly outputs a single, sequence-level probability vector $\mathbf{p} = \text{Model}(\mathbf{X}_{\text{seq}}) \in \mathbb{R}^{76}$ from the final LSTM step. No post-hoc temporal averaging is necessary.
+
+\subsection{Strengths and Limitations}
+\begin{itemize}
+    \item \textbf{Strengths}: Explicitly preserves frame order and captures temporal velocity and trajectory dynamics; single forward pass per sequence ($\approx 45.6$\,ms latency).
+    \item \textbf{Limitations}: Severe sample inefficiency when trained from scratch; the 2D CNN layers fail to extract clean spatial boundaries, feeding degraded representations into the LSTM and resulting in 4.44\% test accuracy across 76 classes.
+\end{itemize}
+
+\section{Training Procedure}
+\label{sec:training_procedure}
+All three architectures were trained on the identical 806-video training split using mini-batch gradient descent. Validation on the 180-video validation split was performed at the end of each epoch:
+\begin{itemize}
+    \item \textbf{Batch Size}: Set to 32 samples (or 32 video sequences for CNN-LSTM).
+    \item \textbf{Learning Rate Schedule}: Began at an initial learning rate $\eta = 10^{-3}$ using the Adam optimizer \cite{kingma2014adam}. A \texttt{ReduceLROnPlateau} callback monitored validation loss, reducing the learning rate by a factor of 0.5 when validation loss ceased improving for 3 to 5 consecutive epochs.
+    \item \textbf{Early Stopping and Checkpointing}: A \texttt{ModelCheckpoint} callback monitored validation accuracy and loss, saving only the best model checkpoint weights to disk to prevent overtrained weights from polluting final artifacts.
+\end{itemize}
+
+\section{Loss Functions and Optimizers}
+\label{sec:loss_optimizers}
+Multi-class classification over the 76 discrete ISL word classes was optimized using Categorical Cross-Entropy Loss:
+\begin{equation}
+    \mathcal{L}_{\text{CE}}(\mathbf{y}, \hat{\mathbf{y}}) = - \sum_{k=1}^{76} y_k \log(\hat{y}_k)
+    \label{eq:cross_entropy}
+\end{equation}
+where $\mathbf{y} \in \{0, 1\}^{76}$ represents the one-hot ground truth label, and $\hat{\mathbf{y}} = \text{Softmax}(\mathbf{z}) \in (0, 1)^{76}$ represents the predicted class probabilities.
+
+Optimization was executed using the Adam algorithm \cite{kingma2014adam}, which computes individual adaptive learning rates for different parameters from estimates of first and second moments of the gradients:
+\begin{align}
+    \mathbf{m}_t &= \beta_1 \mathbf{m}_{t-1} + (1 - \beta_1) \mathbf{g}_t \\
+    \mathbf{v}_t &= \beta_2 \mathbf{v}_{t-1} + (1 - \beta_2) \mathbf{g}_t^2 \\
+    \hat{\mathbf{m}}_t &= \frac{\mathbf{m}_t}{1 - \beta_1^t}, \quad \hat{\mathbf{v}}_t = \frac{\mathbf{v}_t}{1 - \beta_2^t} \\
+    \boldsymbol{\theta}_t &= \boldsymbol{\theta}_{t-1} - \frac{\eta}{\sqrt{\hat{\mathbf{v}}_t} + \epsilon} \hat{\mathbf{m}}_t
+\end{align}
+with standard hyperparameters $\beta_1 = 0.9$, $\beta_2 = 0.999$, and $\epsilon = 10^{-7}$.
+
+\section{Model Checkpoints and Inference Engine}
+\label{sec:checkpoints_inference}
+Trained model checkpoints are stored in native Keras 3 format (\texttt{.keras}) within the backend artifacts hierarchy:
+\begin{itemize}
+    \item \texttt{backend/artifacts/mobilenetv2\_frozen/mobilenetv2\_frozen\_best.keras} (13.8\,MB)
+    \item \texttt{backend/artifacts/custom\_cnn/cnn\_baseline\_best.keras} (1.50\,MB)
+    \item \texttt{backend/artifacts/cnn\_lstm/signbridge\_cnn\_lstm\_best.keras} (1.59\,MB)
+\end{itemize}
+Each subdirectory contains an identical ground-truth label mapping file (\texttt{class\_mapping.json}) establishing the bidirectional correspondence between integer class indices $\{0, \dots, 75\}$ and uppercase sign strings.
+
+The \texttt{MultiModelInferenceEngine} class (\texttt{backend/app/inference.py}) loads all models into an internal dictionary cache (\texttt{self.models}) during application startup. Subsequent REST requests retrieve the cached model instance directly, eliminating multi-second deserialization overhead and ensuring sub-200\,ms inference response times.
+
+\section{Model Comparison and Late Fusion Strategy}
+\label{sec:comparison_strategy}
+To provide deeper diagnostic insight, SignBridge implements two complementary multi-model evaluation strategies:
+\begin{enumerate}
+    \item \textbf{Tri-Model Side-by-Side Consensus}: The video sequence is evaluated independently by MobileNetV2, Custom CNN, and CNN-LSTM. The engine calculates an agreement metric:
+    \begin{equation}
+        \text{Agreement Count} = \max_{\text{word}} \left( \sum_{m \in \mathcal{M}} \mathbb{I}(\hat{y}_m = \text{word}) \right) \in \{1, 2, 3\}
+        \label{eq:agreement_count}
+    \end{equation}
+    where $\mathcal{M} = \{\text{mobilenetv2}, \text{custom\_cnn}, \text{cnn\_lstm}\}$. If the agreement count is 3, unanimous consensus is declared; if 2, majority agreement is flagged; if 1, predictions diverge.
+    \item \textbf{Equal-Weight Late Fusion}: In addition to standalone predictions, an ensemble probability vector is computed by taking the unweighted arithmetic mean of the three model distributions:
+    \begin{equation}
+        \mathbf{p}_{\text{fusion}} = \frac{1}{3} \left( \bar{\mathbf{p}}_{\text{mobilenet}} + \bar{\mathbf{p}}_{\text{custom}} + \mathbf{p}_{\text{lstm}} \right) \in \mathbb{R}^{76}
+        \label{eq:late_fusion}
+    \end{equation}
+    The ensemble prediction is $\hat{y}_{\text{fusion}} = \arg\max_k p_{\text{fusion}, k}$. As demonstrated in Chapter \ref{ch:experiments}, this late-fusion benchmark achieves 60.56\% test accuracy---underperforming standalone MobileNetV2 (67.78\%) because the low-accuracy scratch models degrade the ensemble.
+\end{enumerate}

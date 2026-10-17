@@ -1,0 +1,57 @@
+\begin{tikzpicture}[
+    node distance=0.9cm and 1.2cm,
+    font=\small\sffamily,
+    layer/.style={draw=blue!70!black, fill=blue!5, rounded corners=3pt, align=center, inner sep=6pt, text width=5.2cm, line width=0.9pt},
+    frozen/.style={draw=teal!70!black, fill=teal!8, rounded corners=3pt, align=center, inner sep=6pt, text width=5.2cm, line width=1.1pt},
+    head/.style={draw=purple!70!black, fill=purple!6, rounded corners=3pt, align=center, inner sep=6pt, text width=5.2cm, line width=0.9pt},
+    agg/.style={draw=orange!70!black, fill=orange!8, rounded corners=3pt, align=center, inner sep=6pt, text width=5.2cm, line width=0.9pt},
+    arrow/.style={->, >=stealth, line width=1pt, draw=gray!70!black}
+]
+
+\node[layer] (in) {
+    \textbf{Input Layer: \texttt{rgb\_frame\_0\_255}}\\
+    Shape: $(33, 224, 224, 3)$ \quad (Float32 in $[0, 255]$)
+};
+
+\node[layer, below=0.6cm of in] (rescale) {
+    \textbf{Preprocessing: \texttt{Rescaling}}\\
+    Formula: $x \mapsto \frac{x}{127.5} - 1$ \quad (Normalized to $[-1, 1]$)
+};
+
+\node[frozen, below=0.6cm of rescale] (backbone) {
+    \textbf{Backbone: \texttt{mobilenetv2\_1.00\_224}}\\
+    \textit{Pretrained ImageNet Weights (FROZEN)}\\
+    \footnotesize
+    155 Layers (Inverted Residuals + Linear Bottlenecks)\\
+    Global Average Pooling 2D $\to$ 1,280 Features\\
+    \textbf{2,257,984 Non-Trainable Parameters}
+};
+
+\node[head, below=0.6cm of backbone] (dense1) {
+    \textbf{Classification Head: \texttt{Dense(256)}}\\
+    Activation: ReLU \quad (327,936 Trainable Params)
+};
+
+\node[head, below=0.6cm of dense1] (drop) {
+    \textbf{Regularization: \texttt{Dropout(rate=0.3)}}
+};
+
+\node[head, below=0.6cm of drop] (dense2) {
+    \textbf{Output Head: \texttt{Dense(76)}}\\
+    Activation: Softmax \quad (19,532 Trainable Params)
+};
+
+\node[agg, below=0.6cm of dense2] (agg) {
+    \textbf{Temporal Aggregation: Mean Frame Probabilities}\\
+    $\bar{\mathbf{p}} = \frac{1}{33} \sum_{t=1}^{33} \mathbf{p}_t \in \mathbb{R}^{76}$\\
+    $\hat{y} = \arg\max_k \bar{p}_k$ \quad \textbf{(Test Accuracy: 67.78\%)}
+};
+
+\draw[arrow] (in) -- (rescale);
+\draw[arrow] (rescale) -- (backbone);
+\draw[arrow] (backbone) -- (dense1);
+\draw[arrow] (dense1) -- (drop);
+\draw[arrow] (drop) -- (dense2);
+\draw[arrow] (dense2) -- (agg);
+
+\end{tikzpicture}

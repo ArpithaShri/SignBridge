@@ -1,0 +1,116 @@
+\chapter{Experimental Setup and Results}
+\label{ch:experiments}
+
+\section{Experimental Environment}
+\label{sec:exp_env}
+Model training and quantitative evaluation were conducted on a standardized hardware and software environment. Model optimization was executed in a cloud GPU environment equipped with an NVIDIA Tesla T4 GPU (16\,GB VRAM) and an Intel Xeon host processor (2 virtual CPU cores, 13\,GB RAM) utilizing TensorFlow 2.16+ and Keras 3. Local serving, benchmarking, and inference validation were performed on an x86\_64 host workstation running Windows 11 with Python 3.11, OpenCV 4.8+, and Node.js 18+.
+
+All experiments were executed using the identical 76-class Indian Sign Language video dataset described in Chapter \ref{ch:dataset}, comprising 806 training videos, 180 validation videos, and a strictly sequestered held-out test set of 180 videos.
+
+\section{Evaluation Metrics}
+\label{sec:eval_metrics}
+To quantify model performance across the 76 discrete ISL classes, standard statistical evaluation metrics were utilized:
+\begin{enumerate}
+    \item \textbf{Top-1 Classification Accuracy}: The fraction of test video clips where the model's highest-probability predicted class $\hat{y}$ exactly matches the true ground truth class $y$:
+    \begin{equation}
+        \text{Accuracy} = \frac{1}{M_{\text{test}}} \sum_{i=1}^{M_{\text{test}}} \mathbb{I}(\hat{y}^{(i)} = y^{(i)})
+        \label{eq:accuracy}
+    \end{equation}
+    where $M_{\text{test}} = 180$, and $\mathbb{I}(\cdot)$ is the indicator function.
+    \item \textbf{Top-3 Classification Accuracy}: The proportion of test videos where the ground truth class is present within the top-3 highest-ranked candidates:
+    \begin{equation}
+        \text{Top-3 Accuracy} = \frac{1}{M_{\text{test}}} \sum_{i=1}^{M_{\text{test}}} \mathbb{I}(y^{(i)} \in \text{Top3}(\hat{\mathbf{p}}^{(i)}))
+        \label{eq:top3_accuracy}
+    \end{equation}
+    \item \textbf{Precision, Recall, and $F_1$-Score per Class}: For each class $k \in \{0, \dots, 75\}$:
+    \begin{equation}
+        P_k = \frac{\text{TP}_k}{\text{TP}_k + \text{FP}_k}, \quad R_k = \frac{\text{TP}_k}{\text{TP}_k + \text{FN}_k}, \quad F_{1, k} = \frac{2 \cdot P_k \cdot R_k}{P_k + R_k}
+    \end{equation}
+    where $\text{TP}_k$, $\text{FP}_k$, and $\text{FN}_k$ represent true positives, false positives, and false negatives, respectively.
+    \item \textbf{Macro-Averaged $F_1$-Score}: The unweighted arithmetic mean of $F_1$-scores across all 76 classes, giving equal weight to each lexical word regardless of sample representation:
+    \begin{equation}
+        \text{Macro } F_1 = \frac{1}{76} \sum_{k=0}^{75} F_{1, k}
+        \label{eq:macro_f1}
+    \end{equation}
+    \item \textbf{Inference Latency (Milliseconds)}: The wall-clock execution time required to execute model forward passes on the preprocessed 33-frame tensor.
+\end{enumerate}
+
+\section{Custom 2D CNN Results}
+\label{sec:custom_cnn_results}
+The Custom 2D CNN was trained entirely from scratch on the 806 training videos with data augmentation (random rotation, zoom, and translation). 
+
+On the held-out test split of 180 videos across 76 classes, the Custom 2D CNN achieved:
+\begin{itemize}
+    \item \textbf{Test Accuracy}: \textbf{5.00\%} (9 correct predictions out of 180 test videos).
+    \item \textbf{Macro $F_1$-Score}: \textbf{4.82\%} ($0.0482$).
+    \item \textbf{Average Inference Latency}: $\approx 98$\,ms per 33-frame video clip on CPU.
+\end{itemize}
+
+During training, the training set accuracy reached high values ($>95\%$), while validation accuracy plateaued below 48\% (and dropped to 5.00\% on strict video-level held-out evaluation across 76 classes). This stark divergence demonstrates classic catastrophic overfitting: with only $\approx 10.6$ training videos per class, a 3-block convolutional network lacking pre-trained visual priors memorizes training backgrounds and signer-specific silhouettes rather than learning generalized representations of handshape and motion.
+
+\section{MobileNetV2 Transfer Learning Results}
+\label{sec:mobilenetv2_results}
+The MobileNetV2 architecture with frozen ImageNet backbone demonstrated outstanding predictive capability on the identical dataset splits. By keeping the 2,257,984 backbone parameters fixed and training only the 347,468 parameters in the custom classification head, the model effectively exploited general visual filters learned from 1.2 million natural images.
+
+On the 180-video held-out test split, MobileNetV2 achieved:
+\begin{itemize}
+    \item \textbf{Test Accuracy}: \textbf{67.78\%} (122 correct predictions out of 180 test videos).
+    \item \textbf{Macro $F_1$-Score}: \textbf{66.42\%} ($0.6642$).
+    \item \textbf{Average Inference Latency}: $\approx 142$\,ms per 33-frame video clip on CPU.
+\end{itemize}
+
+Achieving 67.78\% top-1 accuracy across 76 fine-grained gesture classes with fewer than 11 training clips per class represents a notable success for transfer learning. Multi-frame probability averaging proved highly effective at smoothing out transient occlusions and motion blur during fast gesture transitions. Consequently, MobileNetV2 was selected as the default primary recognition engine in SignBridge.
+
+\section{CNN-LSTM Spatio-Temporal Results}
+\label{sec:cnn_lstm_results}
+The CNN-LSTM model was trained from scratch to evaluate end-to-end spatio-temporal sequence integration. The model ingests all 33 frames ($112\times112$ pixels) as a continuous sequence through TimeDistributed convolutional layers feeding an LSTM of 128 hidden units.
+
+Quantitative evaluation on the 180 held-out test videos (\texttt{cnn\_lstm\_baseline\_summary.json}) yielded:
+\begin{itemize}
+    \item \textbf{Test Accuracy}: \textbf{4.44\%} (8 correct predictions out of 180 test videos).
+    \item \textbf{Top-3 Accuracy}: \textbf{12.78\%} (23 out of 180 videos contained the ground truth within top-3 candidates).
+    \item \textbf{Macro $F_1$-Score}: \textbf{0.0100} (1.00\%) on strict sequence evaluation (reported as 4.15\% in earlier multi-class frontend summary metadata; both values confirm acute performance degradation).
+    \item \textbf{Weighted $F_1$-Score}: \textbf{0.0097} (0.97\%).
+    \item \textbf{Categorical Cross-Entropy Test Loss}: \textbf{4.218}.
+    \item \textbf{Average Inference Latency}: $\approx 45.6$\,ms per sequence forward pass.
+\end{itemize}
+
+The failure of the CNN-LSTM to generalize ($4.44\%$ test accuracy) highlights a critical lesson in spatio-temporal deep learning: optimizing a convolutional spatial feature extractor and a recurrent temporal integrator simultaneously from scratch on limited video data is fundamentally ill-posed. The early TimeDistributed convolutional layers produce noisy, unrefined feature maps, preventing the LSTM from establishing stable temporal transitions.
+
+\section{Comparative Analysis of Original SignBridge Models}
+\label{sec:comparative_analysis}
+Table \ref{tab:model_comparison_benchmark} presents the comprehensive comparative benchmark across all original SignBridge models evaluated on the identical 180-video held-out test set across 76 ISL word classes.
+
+\begin{table}[htbp]
+\centering
+\caption{Comprehensive performance comparison of original SignBridge models on the 76-class held-out test set (180 videos).}
+\label{tab:model_comparison_benchmark}
+\small
+\begin{tabularx}{\textwidth}{l p{2.8cm} r r r r X}
+\toprule
+\textbf{Model Architecture} & \textbf{Paradigm} & \textbf{Test Acc (\%)} & \textbf{Macro $F_1$ (\%)} & \textbf{Params (Total)} & \textbf{Latency (ms)} & \textbf{Application Role} \\
+\midrule
+\textbf{MobileNetV2 (Frozen)} & Transfer Learning & \textbf{67.78\%} & \textbf{66.42\%} & 2,605,452 & $\approx 142$\,ms & \textbf{Primary Predictor (Default)} \\
+\addlinespace
+\textbf{Custom 2D CNN} & Scratch 2D CNN & 5.00\% & 4.82\% & 119,564 & $\approx 98$\,ms & Baseline spatial benchmark \\
+\addlinespace
+\textbf{CNN-LSTM} & Spatio-Temporal & 4.44\% & 1.00\% / 4.15\% & 128,012 & $\approx 45.6$\,ms & Temporal sequence benchmark \\
+\midrule
+\textbf{Late Fusion Ensemble} & Equal-Weight Softmax & 60.56\% & -- & 2,853,028 & $\approx 285$\,ms & Tri-model diagnostic ensemble \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Analysis of Equal-Weight Late Fusion}
+An equal-weight late-fusion ensemble averaging the softmax probability vectors across MobileNetV2, Custom CNN, and CNN-LSTM achieves **60.56\%** test accuracy. 
+
+While 60.56\% is substantially higher than either scratch model ($5.00\%$ and $4.44\%$), it is **7.22 percentage points lower** than standalone MobileNetV2 (67.78\%). Because equal-weight fusion gives equal $1/3$ vote to each model, the erratic, low-confidence probability distributions generated by the scratch models dilute the confident, correct predictions of MobileNetV2. This empirical finding validates the architectural decision in SignBridge to deploy MobileNetV2 as the standalone default predictor rather than defaulting to late fusion.
+
+\section{Error Analysis and Limitations}
+\label{sec:error_analysis}
+Careful error analysis reveals specific failure modes across the evaluated models:
+\begin{enumerate}
+    \item \textbf{Minimal Pair Confusion}: MobileNetV2 occasionally confuses lexical signs that share identical gross arm trajectories but differ in fine-grained finger spelling or palm orientation (e.g., confusing \texttt{hour} with \texttt{minute}, or \texttt{yesterday} with \texttt{tomorrow}). Because video frames are resized to $224\times224$ pixels, fine finger boundaries can suffer spatial resolution loss.
+    \item \textbf{Signer Independence Constraints}: Testing across signers with significantly different body shapes or clothing reveals mild confidence degradation. MobileNetV2's pre-trained features demonstrate general robustness, but extreme variations in background illumination or camera tilt reduce top-1 confidence.
+    \item \textbf{Scratch Model Collapse}: Both the Custom CNN and CNN-LSTM suffer from mode collapse, predicting a small subset of frequent or visually dominant classes regardless of the input gesture.
+\end{enumerate}

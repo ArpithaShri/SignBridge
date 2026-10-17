@@ -1,0 +1,56 @@
+\chapter{Results Discussion}
+\label{ch:discussion}
+
+\section{Spatial Representation versus Temporal Sequence Modelling}
+\label{sec:spatial_vs_temporal}
+A central scientific inquiry motivating this investigation was determining whether explicit temporal sequence modelling (via recurrent architectures like CNN-LSTMs) outperforms spatial feature extraction paired with temporal probability averaging. Conventional intuition in computer vision suggests that dynamic sign gestures, which evolve continuously over time, ought to benefit fundamentally from recurrent temporal transitions.
+
+However, the empirical findings of SignBridge demonstrate the opposite under realistic data constraints:
+\begin{itemize}
+    \item \textbf{MobileNetV2 (Spatial Feature Averaging)}: 67.78\% Test Accuracy.
+    \item \textbf{CNN-LSTM (Explicit Recurrent Modelling)}: 4.44\% Test Accuracy.
+\end{itemize}
+
+This dramatic performance disparity reveals that \textbf{spatial representation fidelity is the paramount determinant of sign recognition success}. In dynamic isolated signs, individual keyframes (such as the peak gesture apex, maximum hand spread, or distinctive contact point with the torso or face) contain rich, discriminative spatial signatures. Because MobileNetV2 was pre-trained on ImageNet, its frozen convolutional filters reliably detect hand contours, palm orientations, and body postures even with zero prior sign language training. Averaging frame-level probabilities over 33 frames effectively acts as a majority voting filter, filtering out transitional motion blur while amplifying discriminative apex frames.
+
+In contrast, the CNN-LSTM attempted to learn both spatial features and temporal transitions simultaneously from scratch. With only 806 training videos spanning 76 distinct classes, the TimeDistributed 2D convolutional layers were unable to learn basic hand and silhouette segmentation. Consequently, the LSTM was tasked with learning temporal transitions over random or noisy spatial representations, resulting in complete optimization failure. This finding reinforces the broader machine learning principle that recurrent or attention-based temporal modeling requires either high-capacity pre-trained visual encoders or massive video training corpora.
+
+\section{The Role of Transfer Learning in Data-Constrained Domains}
+\label{sec:transfer_learning_impact}
+The success of MobileNetV2 underscores the indispensable value of transfer learning in specialized accessibility applications. High-quality sign language datasets require substantial linguistic expertise to record, segment, and annotate, making them expensive and scarce. In domains with fewer than 15 samples per class, training deep convolutional networks from scratch is severely sample-inefficient, as proven by the 5.00\% baseline accuracy of the Custom 2D CNN.
+
+Freezing the MobileNetV2 backbone provided three critical operational advantages:
+\begin{enumerate}
+    \item \textbf{Regularization and Overfitting Immunity}: Because the 2.26 million backbone parameters remained static during backpropagation, the model could not overfit to idiosyncratic background artifacts or specific signer garments present in the training set.
+    \item \textbf{Accelerated Convergence}: Optimization required adjusting only 347,468 parameters in the custom classification head, allowing the network to converge in a fraction of the epochs required for scratch training.
+    \item \textbf{Computational Footprint}: Backpropagation calculations were confined to the top dense layers, dramatically reducing GPU memory consumption during training.
+\end{enumerate}
+
+\section{Practical Inference and Latency Considerations}
+\label{sec:inference_considerations}
+In real-world assistive technologies, model accuracy must be balanced against execution latency and resource consumption. An assistive translation app that achieves 90\% accuracy but requires 10 seconds of server processing per gesture is unusable in face-to-face conversation.
+
+SignBridge achieves an optimal operational balance:
+\begin{itemize}
+    \item \textbf{CPU-Friendly Execution}: The MobileNetV2 model contains only 2.6 million total parameters and occupies 13.8\,MB of storage. Forward inference over all 33 frames executes in $\approx 140\text{--}180$\,ms on standard x86\_64 CPUs, fully bypassing the need for dedicated server GPUs.
+    \item \textbf{In-Memory Singleton Architecture}: By pre-loading model weights during FastAPI startup, cold-start latency is entirely avoided. Incoming video requests experience instantaneous tensor dispatch upon upload completion.
+    \item \textbf{Bandwidth Efficiency}: Compressing video clips and downsampling to 33 frames ensures minimal network bandwidth usage when transmitting video data between the browser and backend.
+\end{itemize}
+
+\section{Ensemble Tradeoffs in Late Fusion}
+\label{sec:ensemble_tradeoffs}
+Ensemble methods frequently improve predictive generalization in machine learning when combining diverse models with comparable individual accuracies. However, SignBridge's late-fusion experiment provides an instructive counter-example:
+\begin{equation}
+    \text{Acc}(\text{MobileNetV2}) = 67.78\% > \text{Acc}(\text{Late Fusion}) = 60.56\% > \text{Acc}(\text{Custom CNN}) = 5.00\%
+\end{equation}
+Because the Custom CNN and CNN-LSTM models exhibit acute classification failure ($<5\%$), their output probability distributions behave almost randomly across the 76 classes. When averaged with equal weights into the ensemble, these uncalibrated probabilities frequently inject false peaks into the distribution, overriding MobileNetV2's correct predictions and dropping overall test accuracy by 7.22 percentage points. This confirms that unweighted ensemble fusion is detrimental when the constituent models exhibit large disparities in baseline competence.
+
+\section{System Generalization and Real-World Limitations}
+\label{sec:generalization_limitations}
+While SignBridge achieves 67.78\% accuracy on the sequestered 180-video held-out test set, claims of universal real-world generalization must be stated with scientific caution:
+\begin{itemize}
+    \item \textbf{Controlled Laboratory vs. In-the-Wild Conditions}: The evaluation dataset was recorded in controlled indoor environments with frontal camera perspectives. In uncontrolled real-world settings, severe backlighting, dynamic shadows, cluttered backgrounds, and extreme camera angles will inevitably degrade recognition confidence.
+    \item \textbf{Signer Independence}: Although the held-out test split evaluates unseen video clips, full signer-independent cross-validation across hundreds of diverse signers remains unmeasured. True signer independence requires broader demographic and morphological variation in the training corpus.
+    \item \textbf{Continuous vs. Isolated Gestures}: SignBridge is engineered specifically for isolated lexical sign words. It does not transcribe continuous signing sentences or perform grammatical translation, which require continuous alignment models (e.g., Connectionist Temporal Classification or Sequence-to-Sequence Transformers).
+\end{itemize}
+These limitations are transparently documented as engineering boundaries rather than defects.

@@ -1,0 +1,199 @@
+\chapter{System Implementation}
+\label{ch:implementation}
+
+\section{Frontend Implementation}
+\label{sec:frontend_impl}
+The SignBridge frontend is engineered as a modern, reactive single-page application (SPA) using React 19, TypeScript, and Vite. The user interface prioritizes clarity, accessibility, and real-time diagnostic transparency.
+
+\subsection{Design System and UI Theming}
+The interface employs a dark-mode glassmorphic design system defined through semantic CSS design tokens in \texttt{frontend/src/index.css}. Color tokens utilize curated HSL and hex palettes:
+\begin{itemize}
+    \item \textbf{Brand Colors}: Deep indigo and violet primaries (\texttt{--brand-500: \#6366f1}, \texttt{--brand-600: \#4f46e5}) for interactive elements and highlights.
+    \item \textbf{Surface Layers}: Translucent dark backgrounds (\texttt{rgba(15, 23, 42, 0.75)}) with backdrop Gaussian blurs (\texttt{backdrop-filter: blur(16px)}) and 1\,px frosted borders (\texttt{rgba(255, 255, 255, 0.08)}).
+    \item \textbf{Semantic Accents}: Emerald green (\texttt{\#10b981}) for live model readiness, amber (\texttt{\#f59e0b}) for warnings and latency indicators, and cyan (\texttt{\#06b6d4}) for temporal parameters.
+    \item \textbf{Typography}: Clean sans-serif hierarchy for interface copy paired with monospace fonts (\texttt{JetBrains Mono}, \texttt{Fira Code}) for latency numbers, class indices, and tensor dimensions.
+\end{itemize}
+
+\subsection{Component Structure and State Management}
+Application state is managed using idiomatic React hooks (\texttt{useState}, \texttt{useEffect}, \texttt{useCallback}, and \texttt{useRef}):
+\begin{itemize}
+    \item \texttt{App.tsx}: Maintains top-level navigation state (\texttt{currentTab} $\in$ \texttt{\{'dashboard', 'recognition', 'comparison'\}}), backend connectivity status (\texttt{backendConnected}), and live inference vs. offline demo mode indicators.
+    \item Periodic Health Polling: \texttt{App.tsx} initiates a background polling interval every 6 seconds invoking \texttt{checkBackendHealth()} to dynamically track backend server availability and model weight readiness across local candidate ports (\texttt{8000}, \texttt{8001}).
+\end{itemize}
+
+\section{Backend Implementation}
+\label{sec:backend_impl}
+The backend is implemented as an asynchronous microservice in \texttt{backend/app/main.py} utilizing FastAPI and Uvicorn on Python 3.11, executing neural graph operations via TensorFlow and Keras \cite{abadi2016tensorflow}.
+
+\subsection{Lifespan Management and In-Memory Caching}
+A critical engineering achievement in SignBridge is the elimination of cold-start inference latency. Standard naive machine learning scripts often deserialize multi-megabyte Keras models on every incoming HTTP POST request, consuming 2 to 5 seconds per request. SignBridge utilizes FastAPI's asynchronous \texttt{lifespan} context manager to execute a one-time pre-loading routine at application startup, as demonstrated in Listing \ref{lst:lifespan}.
+
+\begin{lstlisting}[language=Python, caption={FastAPI lifespan startup routine for in-memory model caching.}, label={lst:lifespan}]
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Initializing SignBridge Multi-Model Backend...")
+    try:
+        load_statuses = engine.load_all()
+        logger.info(f"Model initialization statuses: {load_statuses}")
+    except Exception as e:
+        logger.error(f"Error initializing models at startup: {e}")
+    yield
+    logger.info("SignBridge backend shutting down.")
+
+app = FastAPI(
+    title="SignBridge ISL Recognition API",
+    version="1.1.0",
+    lifespan=lifespan
+)
+\end{lstlisting}
+
+When \texttt{engine.load\_all()} executes, the \texttt{MultiModelInferenceEngine} loads \texttt{mobilenetv2\_frozen\_best.keras}, \texttt{cnn\_baseline\_best.keras}, and \texttt{signbridge\_cnn\_lstm\_best.keras} into memory once. Subsequent HTTP requests access these pre-instantiated graphs directly, reducing per-request latency to raw neural tensor execution time ($<180$\,ms).
+
+\section{Image and Video Processing Implementation}
+\label{sec:image_processing_impl}
+The video preprocessing pipeline in \texttt{backend/app/preprocessing.py} dynamically routes inputs according to the model identifier requested by the client. Listing \ref{lst:preproc_code} illustrates the routing logic.
+
+\begin{lstlisting}[language=Python, caption={Model-specific preprocessing implementation in \texttt{backend/app/preprocessing.py}.}, label={lst:preproc_code}]
+def preprocess_for_model(
+    video_path: Union[str, Path],
+    model_id: str = "mobilenetv2",
+    num_frames: int = FRAMES_PER_VIDEO
+) -> np.ndarray:
+    raw_frames = decode_video_frames(video_path, num_frames=num_frames)
+    target_key = normalize_model_id(model_id)
+
+    if target_key == "cnn_lstm":
+        resized = [
+            cv2.resize(f, (IMAGE_SIZE_LSTM, IMAGE_SIZE_LSTM), interpolation=cv2.INTER_AREA)
+            for f in raw_frames
+        ]
+        seq = np.asarray(resized, dtype=np.float32) / 255.0
+        return np.expand_dims(seq, axis=0) # 5D tensor: (1, 33, 112, 112, 3)
+
+    elif target_key == "custom_cnn":
+        resized = [
+            cv2.resize(f, (IMAGE_SIZE_DEFAULT, IMAGE_SIZE_DEFAULT), interpolation=cv2.INTER_AREA)
+            for f in raw_frames
+        ]
+        return np.asarray(resized, dtype=np.float32) / 255.0 # 4D: (33, 224, 224, 3)
+
+    else: # mobilenetv2
+        resized = [
+            cv2.resize(f, (IMAGE_SIZE_DEFAULT, IMAGE_SIZE_DEFAULT), interpolation=cv2.INTER_AREA)
+            for f in raw_frames
+        ]
+        return np.asarray(resized, dtype=np.float32) # 4D: (33, 224, 224, 3) in [0, 255]
+\end{lstlisting}
+
+\section{Webcam-Based Live Video Recognition}
+\label{sec:webcam_impl}
+The webcam recording subsystem (\texttt{frontend/src/components/recognition/WebcamRecorder.tsx}) provides an accessible browser-native capture interface without requiring third-party browser plugins:
+\begin{enumerate}
+    \item \textbf{Device Enumeration and Camera Selection}: Invokes \texttt{navigator.mediaDevices.enumerateDevices()} to detect all attached video inputs, allowing users to switch between integrated webcams and external high-definition USB cameras.
+    \item \textbf{Media Stream Acquisition}: Requests a high-frame-rate video stream via \texttt{getUserMedia(\{ video: \{ width: 1280, height: 720, frameRate: \{ ideal: 30 \} \} \})}.
+    \item \textbf{Controlled Capture and Auto-Termination}: A 10-second countdown timer regulates recording. The user may manually terminate recording at any point or allow the 10-second maximum duration timer to trigger automatic stoppage.
+    \item \textbf{Blob Encoding and File Generation}: The \texttt{MediaRecorder} API records incoming chunks into a \texttt{video/webm} container. On completion, the binary chunks are assembled into a standard JavaScript \texttt{File} object and passed directly into the recognition analysis pipeline.
+\end{enumerate}
+
+\section{Video Upload and Recognition Workflow}
+\label{sec:upload_impl}
+For pre-recorded video files, \texttt{VideoUploader.tsx} provides an interactive drag-and-drop target and file browser. Upon file selection, client-side validation executes instantly via \texttt{validateVideoFile()}:
+\begin{itemize}
+    \item Checks that the file is non-empty ($>0$ bytes).
+    \item Confirms that the extension matches \texttt{\{'.mov', '.mp4', '.avi', '.webm'\}}.
+    \item Verifies that the file size is $\le 100$\,MB.
+\end{itemize}
+If valid, an HTML5 object URL is instantiated via \texttt{URL.createObjectURL(file)} to display an instant video player preview, and the file is dispatched to the recognition endpoint.
+
+\section{Model Selection and Comparison Workflows}
+\label{sec:model_selection_impl}
+The SignBridge interface offers two distinct operational modes:
+\begin{enumerate}
+    \item \textbf{Single-Model Recognition} (\texttt{RecognitionPage.tsx}): Users select an active model from a dropdown menu (\textbf{MobileNetV2 [Default]}, \textbf{Custom 2D CNN}, \textbf{CNN-LSTM}, or \textbf{Late Fusion Ensemble}). The request is sent to \texttt{POST /api/v1/recognize} with the target model identifier.
+    \item \textbf{Tri-Model Comparison} (\texttt{ComparisonPage.tsx}): The uploaded video is submitted to \texttt{POST /api/v1/compare}. The backend evaluates all three base models on the identical video and computes agreement statistics:
+    \begin{equation}
+        \text{Consensus Status} = \begin{cases}
+            \text{Unanimous (3/3 Agree)}, & \text{if } \hat{y}_{\text{mob}} = \hat{y}_{\text{cnn}} = \hat{y}_{\text{lstm}} \\
+            \text{Majority (2/3 Agree)}, & \text{if two models match} \\
+            \text{Divergent (0/3 Agree)}, & \text{otherwise}
+        \end{cases}
+    \end{equation}
+    The frontend renders a comparative matrix contrasting predicted words, confidence bars, latencies, and consensus banners.
+\end{enumerate}
+
+\section{Error Handling and Resource Cleanup}
+\label{sec:error_handling}
+Robust error handling is implemented across both tiers:
+\begin{itemize}
+    \item \textbf{Guaranteed Disk Cleanup}: When a video file is uploaded to the backend, it is streamed to a temporary file created via \texttt{tempfile.NamedTemporaryFile}. A \texttt{try...finally} block guarantees that \texttt{os.remove(temp\_path)} executes upon request completion, even if an inference exception occurs:
+\begin{lstlisting}[language=Python]
+try:
+    # Process video and execute neural inference
+finally:
+    if temp_path.exists():
+        os.remove(temp_path)
+\end{lstlisting}
+    \item \textbf{Graceful HTTP Error Responses}: Standard HTTP status codes are returned for anomalous conditions: \texttt{400 Bad Request} for invalid extensions or empty files, \texttt{413 Payload Too Large} for files exceeding 100\,MB, and \texttt{503 Service Unavailable} if a requested model artifact is not loaded on disk.
+    \item \textbf{Client Error Banners}: The frontend catches network and server errors and displays dismissible alert banners rather than silently failing or falling back to fabricated predictions.
+\end{itemize}
+
+\section{API Endpoints Summary}
+\label{sec:api_endpoints_detail}
+Table \ref{tab:complete_api_routes} documents the four REST endpoints implemented in \texttt{backend/app/main.py}.
+
+\begin{table}[htbp]
+\centering
+\caption{Detailed REST API endpoints implemented in the SignBridge backend.}
+\label{tab:complete_api_routes}
+\small
+\begin{tabularx}{\textwidth}{l l p{3.2cm} X}
+\toprule
+\textbf{Route} & \textbf{Method} & \textbf{Parameters} & \textbf{Output JSON Keys} \\
+\midrule
+\texttt{/api/v1/health} & \texttt{GET} & None & \texttt{status}, \texttt{model\_loaded}, \texttt{classes\_count}, \texttt{default\_model}, \texttt{models}, \texttt{timestamp} \\
+\addlinespace
+\texttt{/api/v1/model-info} & \texttt{GET} & \texttt{model} (optional string) & \texttt{model\_id}, \texttt{name}, \texttt{architecture}, \texttt{input\_shape}, \texttt{output\_shape}, \texttt{num\_classes}, \texttt{preprocessing} \\
+\addlinespace
+\texttt{/api/v1/recognize} & \texttt{POST} & \texttt{video} (File), \texttt{model} (Form string) & \texttt{success}, \texttt{isMock}, \texttt{videoName}, \texttt{predictedWord}, \texttt{confidence}, \texttt{topK}, \texttt{inferenceTimeMs}, \texttt{modelUsed} \\
+\addlinespace
+\texttt{/api/v1/compare} & \texttt{POST} & \texttt{video} (File) & \texttt{videoName}, \texttt{primaryPrediction}, \texttt{models} (\texttt{mobilenetv2}, \texttt{custom-cnn}, \texttt{cnn-lstm}), \texttt{agreementStatus} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Project Directory Structure}
+\label{sec:directory_structure}
+The SignBridge repository is structured into distinct backend, frontend, and artifact directories, as shown in Listing \ref{lst:repo_tree}.
+
+\begin{lstlisting}[caption={Repository directory layout of the SignBridge project.}, label={lst:repo_tree}]
+SignBridge/
+├── backend/
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── config.py           # Configuration, registry, paths, CORS
+│   │   ├── preprocessing.py    # OpenCV 33-frame extraction & resizing
+│   │   ├── inference.py        # Multi-model singleton inference engine
+│   │   └── main.py             # FastAPI routes (/health, /recognize, etc.)
+│   ├── artifacts/
+│   │   ├── mobilenetv2_frozen/ # mobilenetv2_frozen_best.keras, class_mapping.json
+│   │   ├── custom_cnn/         # cnn_baseline_best.keras, class_mapping.json
+│   │   └── cnn_lstm/           # signbridge_cnn_lstm_best.keras, class_mapping.json
+│   ├── tests/
+│   │   ├── test_api_validation.py # FastAPI endpoint & inference tests
+│   │   └── test_preprocessing.py  # Frame extraction & resolution tests
+│   └── requirements.txt        # Python 3.11 dependencies
+├── frontend/
+│   ├── src/
+│   │   ├── components/         # Dashboard, Recognition, Comparison, Layout
+│   │   ├── services/           # recognitionApi.ts (HTTP client)
+│   │   ├── data/               # modelsData.ts (benchmark metrics & classes)
+│   │   ├── types/              # index.ts (TypeScript interface contracts)
+│   │   ├── App.tsx             # Root component with health polling
+│   │   ├── main.tsx            # React DOM mounting
+│   │   └── index.css           # Glassmorphism design tokens & styles
+│   ├── package.json            # Node.js dependencies
+│   └── vite.config.ts          # Vite build configuration
+├── report/                     # Academic LaTeX case study report
+├── .env.example                # Global environment template
+└── README.md                   # Project overview & execution guide
+\end{lstlisting}

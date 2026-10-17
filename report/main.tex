@@ -1,0 +1,232 @@
+\documentclass[12pt,a4paper,oneside]{report}
+
+% ----------------------------------------------------------------------
+% Core Geometry and Layout
+% ----------------------------------------------------------------------
+\usepackage[
+    top=2.5cm,
+    bottom=2.5cm,
+    left=3.0cm,
+    right=2.5cm,
+    headheight=15pt,
+    footskip=1.2cm
+]{geometry}
+
+\usepackage{setspace}
+\onehalfspacing
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+
+% ----------------------------------------------------------------------
+% Mathematics and Symbols
+% ----------------------------------------------------------------------
+\usepackage{amsmath,amssymb,amsfonts,amsthm}
+\usepackage{bm}
+
+% ----------------------------------------------------------------------
+% Graphics, Colors, and Visuals
+% ----------------------------------------------------------------------
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+\definecolor{brandblue}{RGB}{20, 50, 120}
+\definecolor{darkslate}{RGB}{30, 41, 59}
+\definecolor{codebg}{RGB}{248, 250, 252}
+\definecolor{codeframe}{RGB}{226, 232, 240}
+\definecolor{codegreen}{RGB}{16, 120, 60}
+\definecolor{codepurple}{RGB}{128, 0, 128}
+
+\usepackage{tikz}
+\usetikzlibrary{shapes,arrows,positioning,fit,calc,decorations.pathreplacing}
+
+% ----------------------------------------------------------------------
+% Tables and Alignment
+% ----------------------------------------------------------------------
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{subcaption}
+\captionsetup{font=small,labelfont=bf,margin=10pt}
+
+% ----------------------------------------------------------------------
+% Source Code Listings
+% ----------------------------------------------------------------------
+\usepackage{listings}
+\lstset{
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\footnotesize,
+    breaklines=true,
+    breakatwhitespace=true,
+    frame=single,
+    rulecolor=\color{codeframe},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    stepnumber=1,
+    numbersep=8pt,
+    tabsize=4,
+    showstringspaces=false,
+    keywordstyle=\color{brandblue}\bfseries,
+    commentstyle=\color{codegreen}\itshape,
+    stringstyle=\color{codepurple},
+    captionpos=b,
+    escapeinside={\%*}{*)}
+}
+
+% ----------------------------------------------------------------------
+% Headers and Footers
+% ----------------------------------------------------------------------
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\nouppercase{\leftmark}}
+\fancyhead[R]{\small\thepage}
+\fancyfoot[C]{\small SignBridge — Case Study Report}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\footrulewidth}{0.3pt}
+
+% Redefine plain page style for chapter beginnings
+\fancypagestyle{plain}{
+    \fancyhf{}
+    \fancyfoot[C]{\small\thepage}
+    \renewcommand{\headrulewidth}{0pt}
+    \renewcommand{\footrulewidth}{0.3pt}
+}
+
+% ----------------------------------------------------------------------
+% Hyperlinks and Cross-Referencing
+% ----------------------------------------------------------------------
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=brandblue,
+    citecolor=brandblue,
+    urlcolor=brandblue,
+    filecolor=brandblue,
+    pdftitle={SignBridge — Indian Sign Language Video Recognition: Case Study Report},
+    pdfauthor={SignBridge Project Team},
+    pdfsubject={Academic Case Study Report on Deep Learning for ISL Video Recognition},
+    pdfkeywords={Indian Sign Language, Deep Learning, MobileNetV2, CNN-LSTM, Computer Vision}
+}
+
+\usepackage{cite}
+
+% ----------------------------------------------------------------------
+% Document Structure
+% ----------------------------------------------------------------------
+\begin{document}
+
+% ----------------------------------------------------------------------
+% Title Page
+% ----------------------------------------------------------------------
+\begin{titlepage}
+    \centering
+    \vspace*{0.5cm}
+    
+    {\huge \bfseries SignBridge\par}
+    \vspace{0.4cm}
+    {\Large \bfseries Indian Sign Language Video Recognition\par}
+    \vspace{0.6cm}
+    {\large \textsc{A Technical Case Study Report}\par}
+    
+    \vspace{1.5cm}
+    \rule{0.85\textwidth}{1.2pt}
+    \vspace{0.8cm}
+    
+    {\large Submitted in partial fulfillment of the requirements\\
+    for the award of the degree of\par}
+    \vspace{0.4cm}
+    {\large \bfseries [Degree Name, e.g., Bachelor of Technology]\par}
+    \vspace{0.2cm}
+    {\large in\par}
+    \vspace{0.2cm}
+    {\large \bfseries [Department Name, e.g., Department of Computer Science and Engineering]\par}
+    
+    \vspace{1.5cm}
+    \begin{minipage}{0.48\textwidth}
+        \begin{flushleft} \large
+            \emph{Submitted By:}\\
+            \textbf{[Student Name / Candidate]}\\[0.15cm]
+            \text{Register No: [Register Number]}\\[0.15cm]
+            \text{[Collaborator Name (Optional)]}
+        \end{flushleft}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.48\textwidth}
+        \begin{flushright} \large
+            \emph{Under the Supervision of:}\\
+            \textbf{[Supervisor / Faculty Guide Name]}\\[0.15cm]
+            \text{[Designation / Department]}\\[0.15cm]
+            \text{[Institution / University Name]}
+        \end{flushright}
+    \end{minipage}
+    
+    \vfill
+    \rule{0.85\textwidth}{1.2pt}
+    \vspace{0.8cm}
+    
+    {\large \bfseries [Institution / College / University Name]}\par
+    \vspace{0.2cm}
+    {\normalsize [City, State, Country]}\par
+    \vspace{0.4cm}
+    {\normalsize \textbf{Date / Academic Session:} [Month, Year, e.g., October 2026]}\par
+    
+    \vspace*{0.5cm}
+\end{titlepage}
+
+% ----------------------------------------------------------------------
+% Front Matter
+% ----------------------------------------------------------------------
+\pagenumbering{roman}
+\setcounter{page}{1}
+
+% Abstract
+\input{chapters/00_abstract.tex}
+\clearpage
+
+% Table of Contents
+\tableofcontents
+\clearpage
+
+% List of Figures
+\listoffigures
+\clearpage
+
+% List of Tables
+\listoftables
+\clearpage
+
+% ----------------------------------------------------------------------
+% Main Chapters
+% ----------------------------------------------------------------------
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+\input{chapters/01_introduction.tex}
+\input{chapters/02_literature_review.tex}
+\input{chapters/03_problem_analysis.tex}
+\input{chapters/04_system_design.tex}
+\input{chapters/05_dataset_preprocessing.tex}
+\input{chapters/06_methodology_models.tex}
+\input{chapters/07_system_implementation.tex}
+\input{chapters/08_experiments_results.tex}
+\input{chapters/09_discussion.tex}
+\input{chapters/10_challenges_limitations.tex}
+\input{chapters/11_conclusion_future_work.tex}
+
+% ----------------------------------------------------------------------
+% Bibliography
+% ----------------------------------------------------------------------
+\addcontentsline{toc}{chapter}{References}
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+% ----------------------------------------------------------------------
+% Appendices
+% ----------------------------------------------------------------------
+\input{chapters/12_appendices.tex}
+
+\end{document}

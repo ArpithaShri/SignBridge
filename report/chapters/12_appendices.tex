@@ -1,0 +1,220 @@
+\appendix
+\chapter{Key API Endpoint Documentation}
+\label{app:api_docs}
+
+This appendix provides technical documentation for the primary REST API endpoints exposed by the SignBridge FastAPI backend.
+
+\section{\texttt{GET /api/v1/health}}
+Returns the operational readiness, loaded model statuses, and class vocabulary count of the backend service.
+
+\paragraph{Response (200 OK):}
+\begin{lstlisting}[language=json]
+{
+  "status": "healthy",
+  "model_loaded": true,
+  "classes_count": 76,
+  "default_model": "mobilenetv2",
+  "models": {
+    "mobilenetv2": true,
+    "custom_cnn": true,
+    "cnn_lstm": true,
+    "late_fusion": true
+  },
+  "timestamp": "2026-10-17T15:30:00Z"
+}
+\end{lstlisting}
+
+\section{\texttt{GET /api/v1/model-info}}
+Provides structural architecture metadata, input/output tensor shapes, and preprocessing parameters for a specific model or all registered models.
+
+\paragraph{Query Parameters:}
+\texttt{model} (optional string): \texttt{mobilenetv2}, \texttt{custom\_cnn}, \texttt{cnn\_lstm}, or \texttt{late\_fusion}.
+
+\paragraph{Response Example (200 OK for \texttt{?model=mobilenetv2}):}
+\begin{lstlisting}[language=json]
+{
+  "model_id": "mobilenetv2",
+  "name": "MobileNetV2 (Frozen Backbone)",
+  "architecture": "ImageNet Pretrained Feature Extractor + Global Avg Pooling + Dense(256) -> Dense(76)",
+  "tagline": "Top-performing transfer learning model",
+  "offline_test_accuracy": 67.78,
+  "input_shape": [null, 224, 224, 3],
+  "output_shape": [null, 76],
+  "num_classes": 76,
+  "preprocessing": {
+    "sampling_frames": 33,
+    "target_resolution": "224x224",
+    "color_space": "RGB",
+    "normalization": "Normalized to [-1, 1] (via internal Rescaling)",
+    "input_scale": "[0, 255] float32",
+    "aggregation": "mean frame probabilities"
+  }
+}
+\end{lstlisting}
+
+\section{\texttt{POST /api/v1/recognize}}
+Ingests a video file via \texttt{multipart/form-data}, samples 33 uniform frames, executes neural inference on the requested model, and returns the top predicted word along with top-5 candidate rankings and measured execution latency.
+
+\paragraph{Request Parameters:}
+\begin{itemize}
+    \item \texttt{video}: Binary video file stream (\texttt{.mov}, \texttt{.mp4}, \texttt{.avi}, \texttt{.webm}).
+    \item \texttt{model} (optional): Form-data or query string identifier (default: \texttt{mobilenetv2}).
+\end{itemize}
+
+\paragraph{Response (200 OK):}
+\begin{lstlisting}[language=json]
+{
+  "success": true,
+  "isMock": false,
+  "videoName": "sample_namaste_sign.MOV",
+  "predictedWord": "NAMASTE",
+  "confidence": 0.8842,
+  "modelUsed": {
+    "id": "mobilenetv2",
+    "name": "MobileNetV2 (Frozen Backbone)",
+    "testAccuracy": 67.78,
+    "architecture": "ImageNet Pretrained Feature Extractor + Global Avg Pooling + Dense(256) -> Dense(76)"
+  },
+  "topK": [
+    { "word": "NAMASTE", "confidence": 0.8842 },
+    { "word": "THANK YOU", "confidence": 0.0521 },
+    { "word": "HELLO", "confidence": 0.0384 },
+    { "word": "WELCOME", "confidence": 0.0125 },
+    { "word": "PLEASE", "confidence": 0.0078 }
+  ],
+  "preprocessing": {
+    "framesSampled": 33,
+    "frameResolution": "224 x 224",
+    "colorSpace": "RGB",
+    "normalization": "Normalized to [-1, 1] (via internal Rescaling)",
+    "aggregation": "mean frame probabilities"
+  },
+  "inferenceTimeMs": 142.35,
+  "timestamp": "08:30:15 PM"
+}
+\end{lstlisting}
+
+\section{\texttt{POST /api/v1/compare}}
+Executes neural inference across all three base models (MobileNetV2, Custom CNN, and CNN-LSTM) on the exact same video file, returning individual predictions and consensus analysis.
+
+\paragraph{Response (200 OK):}
+\begin{lstlisting}[language=json]
+{
+  "videoName": "sample_gesture.mp4",
+  "analyzedAt": "08:32:00 PM",
+  "isMockData": false,
+  "primaryPrediction": {
+    "modelId": "mobilenetv2",
+    "modelName": "MobileNetV2 (Frozen Backbone)",
+    "word": "NAMASTE",
+    "confidence": 0.8842
+  },
+  "models": {
+    "mobilenetv2": {
+      "modelId": "mobilenetv2",
+      "modelName": "MobileNetV2 (Frozen Backbone)",
+      "predictedWord": "NAMASTE",
+      "confidence": 0.8842,
+      "inferenceTimeMs": 142.35,
+      "isBestModelOverall": true,
+      "status": "success",
+      "topK": [ ... ]
+    },
+    "custom-cnn": {
+      "modelId": "custom-cnn",
+      "modelName": "Custom 2D CNN",
+      "predictedWord": "NAMASTE",
+      "confidence": 0.3241,
+      "inferenceTimeMs": 98.12,
+      "isBestModelOverall": false,
+      "status": "success",
+      "topK": [ ... ]
+    },
+    "cnn-lstm": {
+      "modelId": "cnn-lstm",
+      "modelName": "CNN-LSTM",
+      "predictedWord": "HELLO",
+      "confidence": 0.2810,
+      "inferenceTimeMs": 45.62,
+      "isBestModelOverall": false,
+      "status": "success",
+      "topK": [ ... ]
+    }
+  },
+  "agreementStatus": {
+    "allAgree": false,
+    "majorityAgreedWord": "NAMASTE",
+    "agreementCount": 2
+  }
+}
+\end{lstlisting}
+
+\chapter{Execution and Reproducibility Guide}
+\label{app:reproducibility}
+
+This appendix outlines the complete operational procedures to set up, configure, and execute the SignBridge backend, frontend, and test suites.
+
+\section{Prerequisites}
+\begin{itemize}
+    \item \textbf{Operating System}: Windows 10/11, Ubuntu Linux 20.04+, or macOS 12+.
+    \item \textbf{Python Runtime}: Python 3.11 with pip.
+    \item \textbf{Node.js Environment}: Node.js v18.0.0 or higher, and npm v9.0.0 or higher.
+\end{itemize}
+
+\section{Backend Configuration and Execution}
+\begin{enumerate}
+    \item Navigate to the backend directory:
+    \begin{lstlisting}[language=bash]
+cd D:\SignBridge\backend
+    \end{lstlisting}
+    \item Create and activate a Python virtual environment:
+    \begin{lstlisting}[language=bash]
+py -3.11 -m venv venv
+.\venv\Scripts\activate
+    \end{lstlisting}
+    \item Install required Python dependencies:
+    \begin{lstlisting}[language=bash]
+pip install -r requirements.txt
+    \end{lstlisting}
+    \item Verify that trained model artifacts exist in \texttt{backend/artifacts/}:
+    \begin{itemize}
+        \item \texttt{mobilenetv2\_frozen/mobilenetv2\_frozen\_best.keras}
+        \item \texttt{custom\_cnn/cnn\_baseline\_best.keras}
+        \item \texttt{cnn\_lstm/signbridge\_cnn\_lstm\_best.keras}
+    \end{itemize}
+    \item Execute the automated backend test suite:
+    \begin{lstlisting}[language=bash]
+pytest tests -v
+    \end{lstlisting}
+    \item Launch the FastAPI server using Uvicorn:
+    \begin{lstlisting}[language=bash]
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+    \end{lstlisting}
+    The API documentation will be available at \texttt{http://127.0.0.1:8000/docs}.
+\end{enumerate}
+
+\section{Frontend Configuration and Execution}
+\begin{enumerate}
+    \item Open a new terminal and navigate to the frontend directory:
+    \begin{lstlisting}[language=bash]
+cd D:\SignBridge\frontend
+    \end{lstlisting}
+    \item Copy the environment configuration template:
+    \begin{lstlisting}[language=bash]
+copy .env.example .env
+    \end{lstlisting}
+    Verify that \texttt{VITE\_API\_BASE\_URL=http://localhost:8000} is set.
+    \item Install frontend Node modules:
+    \begin{lstlisting}[language=bash]
+npm install
+    \end{lstlisting}
+    \item Start the local Vite development server:
+    \begin{lstlisting}[language=bash]
+npm run dev
+    \end{lstlisting}
+    The web interface will be accessible at \texttt{http://localhost:5173/}.
+    \item Validate production build integrity:
+    \begin{lstlisting}[language=bash]
+npm run build
+    \end{lstlisting}
+\end{enumerate}

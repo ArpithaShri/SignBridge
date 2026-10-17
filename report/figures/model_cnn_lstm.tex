@@ -1,0 +1,52 @@
+\begin{tikzpicture}[
+    node distance=0.7cm and 1.2cm,
+    font=\small\sffamily,
+    layer/.style={draw=blue!70!black, fill=blue!5, rounded corners=3pt, align=center, inner sep=5pt, text width=5.6cm, line width=0.9pt},
+    td/.style={draw=teal!70!black, fill=teal!8, rounded corners=3pt, align=center, inner sep=5pt, text width=5.6cm, line width=0.9pt},
+    recurrent/.style={draw=purple!70!black, fill=purple!6, rounded corners=3pt, align=center, inner sep=5pt, text width=5.6cm, line width=1.1pt},
+    out/.style={draw=orange!70!black, fill=orange!8, rounded corners=3pt, align=center, inner sep=5pt, text width=5.6cm, line width=0.9pt},
+    arrow/.style={->, >=stealth, line width=1pt, draw=gray!70!black}
+]
+
+\node[layer] (in) {
+    \textbf{Input: 5D Video Sequence Tensor}\\
+    Shape: $(1, 33, 112, 112, 3)$ \quad (Float32 in $[0, 1]$ via $/ 255.0$)
+};
+
+\node[td, below=0.5cm of in] (td1) {
+    \textbf{TimeDistributed Spatial Block 1}\\
+    \texttt{TimeDistributed(Conv2D(32, 3$\times$3, ReLU))} $\to (33, 112, 112, 32)$ \ [896]\\
+    \texttt{TimeDistributed(MaxPooling2D(2$\times$2))} $\to (33, 56, 56, 32)$
+};
+
+\node[td, below=0.5cm of td1] (td2) {
+    \textbf{TimeDistributed Spatial Block 2}\\
+    \texttt{TimeDistributed(Conv2D(64, 3$\times$3, ReLU))} $\to (33, 56, 56, 64)$ \ [18,496]\\
+    \texttt{TimeDistributed(MaxPooling2D(2$\times$2))} $\to (33, 28, 28, 64)$
+};
+
+\node[td, below=0.5cm of td2] (tdgap) {
+    \textbf{TimeDistributed Feature Pooling}\\
+    \texttt{TimeDistributed(GlobalAveragePooling2D())} $\to (33, 64)$
+};
+
+\node[recurrent, below=0.5cm of tdgap] (lstm) {
+    \textbf{Temporal Sequence Integrator: \texttt{LSTM(128)}}\\
+    \texttt{units=128, return\_sequences=False} $\to (1, 128)$\\
+    Captures temporal hand motion dynamics \ [98,816 params]
+};
+
+\node[out, below=0.5cm of lstm] (head) {
+    \textbf{Classification Head: \texttt{Dense(76, Softmax)}}\\
+    \texttt{Dropout(0.3)} $\to$ \texttt{Dense(76)} \ [9,804 params]\\
+    \textbf{Direct Sequence Probability Vector $\mathbf{p} \in \mathbb{R}^{76}$}\\
+    \footnotesize (No frame averaging required | Test Acc: 4.44\% | Total: 128,012 params)
+};
+
+\draw[arrow] (in) -- (td1);
+\draw[arrow] (td1) -- (td2);
+\draw[arrow] (td2) -- (tdgap);
+\draw[arrow] (tdgap) -- (lstm);
+\draw[arrow] (lstm) -- (head);
+
+\end{tikzpicture}

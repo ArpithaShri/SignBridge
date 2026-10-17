@@ -1,0 +1,59 @@
+\begin{tikzpicture}[
+    node distance=0.8cm and 0.5cm,
+    font=\small\sffamily,
+    stepbox/.style={draw=blue!70!black, fill=blue!6, rounded corners=3pt, align=center, inner sep=6pt, text width=2.4cm, line width=0.9pt},
+    header/.style={font=\bfseries\footnotesize, text=blue!80!black},
+    arrow/.style={->, >=stealth, line width=1.1pt, draw=gray!70!black}
+]
+
+\node[stepbox] (step1) {
+    \textbf{Stage 01}\\[0.1cm]
+    \textbf{Video Ingestion}\\[0.15cm]
+    \scriptsize
+    $\bullet$ Video Upload / Cam\\
+    $\bullet$ Formats: MOV, MP4, AVI\\
+    $\bullet$ Size $\le 100$ MB
+};
+
+\node[stepbox, right=0.6cm of step1] (step2) {
+    \textbf{Stage 02}\\[0.1cm]
+    \textbf{Temporal Sampling}\\[0.15cm]
+    \scriptsize
+    $\bullet$ OpenCV Decode\\
+    $\bullet$ 33 Uniform Frames\\
+    $\bullet$ \texttt{np.linspace(0, T-1, 33)}
+};
+
+\node[stepbox, right=0.6cm of step2] (step3) {
+    \textbf{Stage 03}\\[0.1cm]
+    \textbf{Spatial Preproc}\\[0.15cm]
+    \scriptsize
+    $\bullet$ BGR $\to$ RGB\\
+    $\bullet$ Resize ($224^2$ / $112^2$)\\
+    $\bullet$ Scale: $[0, 255]$ / $[0, 1]$
+};
+
+\node[stepbox, right=0.6cm of step3] (step4) {
+    \textbf{Stage 04}\\[0.1cm]
+    \textbf{Model Inference}\\[0.15cm]
+    \scriptsize
+    $\bullet$ MobileNetV2 (Frame Avg)\\
+    $\bullet$ Custom CNN (Frame Avg)\\
+    $\bullet$ CNN-LSTM (Sequence)
+};
+
+\node[stepbox, right=0.6cm of step4] (step5) {
+    \textbf{Stage 05}\\[0.1cm]
+    \textbf{Consensus \& Output}\\[0.15cm]
+    \scriptsize
+    $\bullet$ Top-1 Predicted ISL Word\\
+    $\bullet$ Top-5 Probabilities\\
+    $\bullet$ Cross-Model Agreement
+};
+
+\draw[arrow] (step1) -- (step2);
+\draw[arrow] (step2) -- (step3);
+\draw[arrow] (step3) -- (step4);
+\draw[arrow] (step4) -- (step5);
+
+\end{tikzpicture}

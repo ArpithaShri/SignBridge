@@ -1,0 +1,59 @@
+\begin{tikzpicture}[
+    node distance=0.7cm and 1.2cm,
+    font=\small\sffamily,
+    layer/.style={draw=blue!70!black, fill=blue!5, rounded corners=3pt, align=center, inner sep=5pt, text width=5.2cm, line width=0.9pt},
+    conv/.style={draw=teal!70!black, fill=teal!8, rounded corners=3pt, align=center, inner sep=5pt, text width=5.2cm, line width=0.9pt},
+    dense/.style={draw=purple!70!black, fill=purple!6, rounded corners=3pt, align=center, inner sep=5pt, text width=5.2cm, line width=0.9pt},
+    agg/.style={draw=orange!70!black, fill=orange!8, rounded corners=3pt, align=center, inner sep=5pt, text width=5.2cm, line width=0.9pt},
+    arrow/.style={->, >=stealth, line width=1pt, draw=gray!70!black}
+]
+
+\node[layer] (in) {
+    \textbf{Input: \texttt{rgb\_frame}}\\
+    Shape: $(33, 224, 224, 3)$ \quad (Float32 in $[0, 1]$ via $/ 255.0$)
+};
+
+\node[conv, below=0.5cm of in] (block1) {
+    \textbf{Convolutional Block 1}\\
+    \texttt{Conv2D(32, 3$\times$3, ReLU, Same)} $\to (224, 224, 32)$ \ [896 params]\\
+    \texttt{MaxPooling2D(2$\times$2)} $\to (112, 112, 32)$
+};
+
+\node[conv, below=0.5cm of block1] (block2) {
+    \textbf{Convolutional Block 2}\\
+    \texttt{Conv2D(64, 3$\times$3, ReLU, Same)} $\to (112, 112, 64)$ \ [18,496 params]\\
+    \texttt{MaxPooling2D(2$\times$2)} $\to (56, 56, 64)$
+};
+
+\node[conv, below=0.5cm of block2] (block3) {
+    \textbf{Convolutional Block 3}\\
+    \texttt{Conv2D(128, 3$\times$3, ReLU, Same)} $\to (56, 56, 128)$ \ [73,856 params]\\
+    \texttt{MaxPooling2D(2$\times$2)} $\to (28, 28, 128)$
+};
+
+\node[layer, below=0.5cm of block3] (gap) {
+    \textbf{Feature Aggregation}\\
+    \texttt{GlobalAveragePooling2D()} $\to (128)$
+};
+
+\node[dense, below=0.5cm of gap] (dense1) {
+    \textbf{Dense Classification Head}\\
+    \texttt{Dense(128, ReLU)} \ [16,512 params]\\
+    \texttt{Dropout(0.3)}\\
+    \texttt{Dense(76, Softmax)} \ [9,804 params]
+};
+
+\node[agg, below=0.5cm of dense1] (agg) {
+    \textbf{Temporal Aggregation: Mean Frame Softmax}\\
+    $\bar{\mathbf{p}} = \frac{1}{33} \sum_{t=1}^{33} \mathbf{p}_t$ \quad \textbf{(Test Accuracy: 5.00\%)}\\
+    \footnotesize Total Parameters: 119,564 (100\% Trainable)
+};
+
+\draw[arrow] (in) -- (block1);
+\draw[arrow] (block1) -- (block2);
+\draw[arrow] (block2) -- (block3);
+\draw[arrow] (block3) -- (gap);
+\draw[arrow] (gap) -- (dense1);
+\draw[arrow] (dense1) -- (agg);
+
+\end{tikzpicture}

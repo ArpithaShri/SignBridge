@@ -1,0 +1,86 @@
+\chapter{Literature Review}
+\label{ch:literature}
+
+\section{Overview of Sign Language Recognition}
+\label{sec:lit_slr_overview}
+Sign Language Recognition (SLR) has been an active domain of computer vision and pattern recognition research for over three decades \cite{starner1998real, rastgoo2021sign}. Early methodologies relied extensively on specialized physical sensor hardware, including instrumented cyber-gloves equipped with flex sensors, inertial measurement units (IMUs), and magnetic tracking devices, or structured-light depth cameras such as Microsoft Kinect \cite{adaloglou2022comprehensive}. While instrumented devices bypass the complex computer vision task of hand segmentation and tracking by providing direct kinematic coordinates of joint angles and hand positions, they impose severe practical constraints: they are expensive, cumbersome to calibrate, and unnatural for signers to wear during daily social interactions.
+
+Consequently, research has shifted decisively toward vision-based, non-intrusive SLR using standard monocular 2D RGB video cameras \cite{koller2019deep, adaloglou2022comprehensive}. Vision-based SLR is broadly categorized into two complementary paradigms:
+\begin{enumerate}
+    \item \textbf{Isolated Sign Language Recognition (ISLR)}: The system classifies a segmented video clip representing a single, distinct lexical sign word into one of $K$ predefined discrete classes.
+    \item \textbf{Continuous Sign Language Recognition (CSLR)}: The system ingests an unsegmented, continuous signing video sentence and transcribes a sequence of sign glosses or natural language sentences, requiring joint temporal alignment and translation \cite{camgoz2018neural, koller2019deep}.
+\end{enumerate}
+The SignBridge framework focuses specifically on Isolated Sign Language Recognition (ISLR), recognizing 76 discrete dynamic ISL word classes from short video clips.
+
+\section{Convolutional Neural Networks in Visual Gesture Recognition}
+\label{sec:lit_cnn}
+The resurgence of deep learning, precipitated by Deep Convolutional Neural Networks (CNNs), fundamentally transformed computer vision by replacing handcrafted features (such as Scale-Invariant Feature Transform [SIFT], Histograms of Oriented Gradients [HOG], or optical flow histograms) with end-to-end learned hierarchical representations \cite{simonyan2014very, he2016deep}. In sign language recognition, early CNN applications evaluated single 2D video frames to recognize static finger-spelling alphabets and numbers, where gestures lack temporal motion \cite{raheja2016real, kumar2018indian}.
+
+To extend 2D CNNs to dynamic video sequences, Karpathy et al.~\cite{karpathy2014large} investigated multiple temporal fusion strategies on large-scale video benchmarks, including early fusion (stacking contiguous video frames along the channel dimension), late fusion (averaging prediction probabilities from separate parallel streams), and slow fusion (progressively fusing temporal information through higher-level convolutional layers). Their empirical findings revealed that simple frame-level late fusion often performs competitively with complex temporal fusion schemes when trained on diverse visual datasets, provided the underlying 2D spatial feature extractor is sufficiently robust. This insight forms the foundation of SignBridge's multi-frame probability averaging strategy for 2D convolutional backbones.
+
+\section{Transfer Learning and Pre-trained Feature Extractors}
+\label{sec:lit_transfer_learning}
+A ubiquitous challenge in domain-specific computer vision tasks---particularly medical imaging and sign language recognition---is the extreme scarcity of labeled training data relative to the parameter capacity of modern deep neural networks. Training deep CNN architectures from scratch requires hundreds of thousands or millions of labeled images; when applied to datasets containing only thousands of samples, networks suffer from severe over-parameterization, catastrophic overfitting, and divergence during optimization \cite{yosinski2014transferable}.
+
+Transfer learning resolves this fundamental limitation by repurposing neural representations learned on massive, general-purpose vision benchmarks, most notably the ImageNet database comprising over 1.2 million natural images spanning 1,000 object categories \cite{deng2009imagenet}. Yosinski et al.~\cite{yosinski2014transferable} demonstrated that early convolutional layers in deep networks learn generic, domain-agnostic visual primitives---such as edge detectors, Gabor-like directional filters, color contrasts, and texture gradients---that transfer seamlessly across disparate visual tasks. Conversely, higher layers transition toward task-specific representations.
+
+In the context of edge and mobile deployment, Sandler et al.~\cite{sandler2018mobilenetv2} introduced \textbf{MobileNetV2}, an efficient convolutional architecture designed specifically for low-latency, resource-constrained mobile and embedded platforms. MobileNetV2 introduces the \textit{inverted residual block with linear bottlenecks}, which separates spatial filtering from channel projection via depthwise separable convolutions and eliminates non-linearities in low-dimensional bottleneck layers to preserve visual manifold information. 
+
+By freezing the pre-trained ImageNet backbone of MobileNetV2 and attaching a custom dense classification head, visual recognition systems can exploit generic spatial representations without corrupting pre-trained weights during backpropagation, dramatically accelerating training convergence and preventing overfitting on small gesture datasets \cite{sandler2018mobilenetv2}.
+
+\section{Spatio-Temporal Sequence Modelling: 3D CNNs and CNN-LSTMs}
+\label{sec:lit_temporal_models}
+Because dynamic signs involve continuous motion trajectories over time, modeling the temporal evolution of visual features across consecutive video frames is a major area of research. Two primary architectural paradigms have emerged for spatio-temporal video modelling:
+\begin{enumerate}
+    \item \textbf{3D Convolutional Neural Networks (3D CNNs)}: Architectures such as C3D \cite{tran2015learning} and I3D (Inflated 3D ConvNet) \cite{carreira2017quo} replace standard $2\text{D}$ spatial convolutional kernels ($K \times K$) with $3\text{D}$ spatio-temporal kernels ($K \times K \times T$). By convolving simultaneously across spatial dimensions and the temporal axis, 3D CNNs directly capture motion dynamics alongside spatial appearance. However, 3D convolutions dramatically increase parameter counts and computational complexity ($\mathcal{O}(T)$ multiplication in floating-point operations), making them notoriously difficult to train from scratch without massive video pre-training on datasets such as Kinetics-400 \cite{carreira2017quo}.
+    \item \textbf{Recurrent Hybrid Architectures (CNN-LSTM)}: Introduced by Donahue et al.~\cite{donahue2015long} as Long-term Recurrent Convolutional Networks (LRCN), this hybrid paradigm decouples spatial feature extraction from temporal sequence integration. At each time step $t$, a 2D convolutional network (often wrapped inside a \texttt{TimeDistributed} layer) processes frame $I_t$ into a compact spatial feature vector $\mathbf{v}_t$. The ordered sequence of vectors $(\mathbf{v}_1, \mathbf{v}_2, \dots, \mathbf{v}_T)$ is then fed into a recurrent neural network, such as a Long Short-Term Memory (LSTM) network \cite{hochreiter1997long}, which maintains internal hidden and cell states to capture temporal transitions and long-range dependencies:
+    \begin{align}
+        \mathbf{f}_t &= \sigma(\mathbf{W}_f [\mathbf{h}_{t-1}, \mathbf{v}_t] + \mathbf{b}_f) \\
+        \mathbf{i}_t &= \sigma(\mathbf{W}_i [\mathbf{h}_{t-1}, \mathbf{v}_t] + \mathbf{b}_i) \\
+        \tilde{\mathbf{C}}_t &= \tanh(\mathbf{W}_c [\mathbf{h}_{t-1}, \mathbf{v}_t] + \mathbf{b}_c) \\
+        \mathbf{C}_t &= \mathbf{f}_t \odot \mathbf{C}_{t-1} + \mathbf{i}_t \odot \tilde{\mathbf{C}}_t \\
+        \mathbf{o}_t &= \sigma(\mathbf{W}_o [\mathbf{h}_{t-1}, \mathbf{v}_t] + \mathbf{b}_o) \\
+        \mathbf{h}_t &= \mathbf{o}_t \odot \tanh(\mathbf{C}_t)
+    \end{align}
+    where $\odot$ denotes element-wise Hadamard multiplication, and $\sigma(\cdot)$ is the logistic sigmoid function.
+\end{enumerate}
+
+While conceptually powerful for capturing gesture trajectories, optimizing a CNN-LSTM from scratch on limited video samples introduces an acute dual optimization hurdle: the 2D CNN layers must learn meaningful spatial representations of hands and bodies from scratch while the recurrent LSTM layers simultaneously attempt to learn temporal transition dynamics over unrefined, noisy spatial features \cite{adaloglou2022comprehensive}.
+
+\section{Prior Research on Indian Sign Language Recognition}
+\label{sec:lit_isl}
+Indian Sign Language differs significantly from American Sign Language (ASL) and British Sign Language (BSL) in phonological rules, grammatical markers, and lexical handshapes \cite{kumar2018indian}. In particular, a substantial proportion of ISL vocabulary involves two-handed (bimanual) signs where both the dominant and non-dominant hands articulate symmetrical or complementary motions across the torso.
+
+Early works in ISL recognition focused predominantly on static alphabetic finger-spelling or small isolated subsets of 10 to 30 signs. Raheja et al.~\cite{raheja2016real} developed a real-time gesture recognition system for basic ISL signs using hand skin-color segmentation and Support Vector Machines (SVMs), achieving high recognition on a constrained set under controlled lighting, but failing under varying illumination and natural backgrounds. Kumar et al.~\cite{kumar2018indian} explored deep convolutional networks for ISL recognition, emphasizing the necessity of robust data preprocessing and standardized video frame sampling.
+
+A critical gap identified across the published ISL literature is the prevalence of small-scale laboratory prototypes that evaluate only 10 to 35 sign classes, rarely benchmark multiple deep learning paradigms under identical experimental constraints, and lack open, deployable full-stack application architectures capable of serving real users via web browsers.
+
+\section{Summary and Distinction from the Current Work}
+\label{sec:lit_summary}
+Table \ref{tab:lit_comparison} summarizes key published approaches in sign language recognition and highlights how the SignBridge project positions itself within this academic landscape.
+
+\begin{table}[htbp]
+\centering
+\caption{Comparative analysis of published SLR paradigms versus the SignBridge implementation.}
+\label{tab:lit_comparison}
+\small
+\begin{tabularx}{\textwidth}{l p{3.2cm} p{2.8cm} p{3.5cm} X}
+\toprule
+\textbf{Work / Paradigm} & \textbf{Input Modality} & \textbf{Vocabulary} & \textbf{Core Architecture} & \textbf{Key Limitation / Difference} \\
+\midrule
+Starner et al.~\cite{starner1998real} & Color camera (Desk/Wearable) & 40 ASL signs & Hidden Markov Models (HMM) & Relied on colored gloves and manual feature extraction. \\
+\addlinespace
+Karpathy et al.~\cite{karpathy2014large} & Monocular RGB Video & Large-scale action classes & 2D CNN with late probability fusion & General action video; not tailored to fine-grained sign gestures. \\
+\addlinespace
+Donahue et al.~\cite{donahue2015long} & Video sequences & Activity recognition & Recurrent LRCN (CNN + LSTM) & Jointly optimized on large datasets; high sample requirement. \\
+\addlinespace
+Kumar et al.~\cite{kumar2018indian} & 2D RGB Video & ISL subsets ($<35$ classes) & Standard 2D CNN & Limited vocabulary; no multi-model comparison or full-stack web UI. \\
+\addlinespace
+Koller et al.~\cite{koller2019deep} & RGB Video & Continuous sign sentences & Hybrid CNN-HMM & Continuous recognition requiring alignment sequences; high compute. \\
+\addlinespace
+\textbf{SignBridge (This Work)} & \textbf{Standard monocular RGB Video / Webcam} & \textbf{76 dynamic ISL word classes} & \textbf{MobileNetV2 (Frozen), Custom CNN, CNN-LSTM, Late Fusion} & \textbf{76-class isolated ISL; rigorous scratch vs. transfer learning benchmark; deployed FastAPI + React 19 web app.} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+By providing an end-to-end implementation that benchmarks transfer learning against scratch-trained convolutional and recurrent models across 76 discrete dynamic ISL words and pairs the resulting engine with a low-latency web application, this case study directly addresses real-world applicability and comparative transparency.
