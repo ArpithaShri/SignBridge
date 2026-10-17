@@ -1,29 +1,30 @@
 \begin{tikzpicture}[
-    node distance=1.2cm and 1.5cm,
+    scale=0.88, transform shape,
+    node distance=0.8cm and 1.1cm,
     font=\small\sffamily,
-    box/.style={draw=blue!70!black, fill=blue!5, rounded corners=4pt, align=center, inner sep=7pt, line width=1pt},
-    comp/.style={draw=teal!70!black, fill=teal!5, rounded corners=4pt, align=center, inner sep=7pt, line width=1pt},
-    model/.style={draw=purple!70!black, fill=purple!5, rounded corners=4pt, align=center, inner sep=7pt, line width=1pt},
-    data/.style={draw=orange!70!black, fill=orange!8, rounded corners=2pt, align=center, inner sep=6pt, line width=0.8pt},
-    arrow/.style={->, >=stealth, line width=1.1pt, draw=gray!70!black}
+    box/.style={draw=blue!70!black, fill=blue!5, rounded corners=4pt, align=center, inner sep=6pt, line width=0.9pt},
+    comp/.style={draw=teal!70!black, fill=teal!5, rounded corners=4pt, align=center, inner sep=6pt, line width=0.9pt},
+    model/.style={draw=purple!70!black, fill=purple!5, rounded corners=4pt, align=center, inner sep=6pt, line width=0.9pt},
+    data/.style={draw=orange!70!black, fill=orange!8, rounded corners=2pt, align=center, inner sep=5pt, line width=0.8pt},
+    arrow/.style={->, >=stealth, line width=1.0pt, draw=gray!70!black}
 ]
 
 % Client Tier
-\node[box, text width=4.0cm] (client) {
+\node[box, text width=3.8cm] (client) {
     \textbf{Client Presentation Tier}\\
     \textit{React 19 + TypeScript + Vite}\\
-    \vspace{0.15cm}
-    \footnotesize
-    $\bullet$ Video Upload (.mov, .mp4, .avi)\\
+    \vspace{0.1cm}
+    \scriptsize
+    $\bullet$ Video Upload (.mov, .mp4)\\
     $\bullet$ HTML5 Webcam Recorder\\
     $\bullet$ Real-time Latency \& Top-5 UI\\
     $\bullet$ Tri-Model Agreement Matrix
 };
 
 % REST Boundaries
-\node[data, right=1.6cm of client, text width=2.6cm] (api) {
+\node[data, right=1.1cm of client, text width=2.4cm] (api) {
     \textbf{REST API / HTTP}\\
-    \footnotesize
+    \scriptsize
     \texttt{/api/v1/health}\\
     \texttt{/api/v1/model-info}\\
     \texttt{/api/v1/recognize}\\
@@ -31,35 +32,35 @@
 };
 
 % Backend Tier
-\node[comp, right=1.6cm of api, text width=4.4cm] (backend) {
+\node[comp, right=1.1cm of api, text width=4.0cm] (backend) {
     \textbf{Backend Processing Tier}\\
     \textit{FastAPI + Uvicorn (Python 3.11)}\\
-    \vspace{0.15cm}
-    \footnotesize
-    $\bullet$ CORS Middleware \& File Validation\\
-    $\bullet$ Temporary File Stream Handler\\
-    $\bullet$ Multi-Model Lifespan Engine\\
+    \vspace{0.1cm}
+    \scriptsize
+    $\bullet$ CORS \& File Validation\\
+    $\bullet$ Temp File Stream Handler\\
+    $\bullet$ Lifespan Model Engine\\
     $\bullet$ Model Registry \& Aliases
 };
 
 % Preprocessing Subsystem
-\node[comp, below=1.2cm of backend, text width=4.4cm] (preproc) {
+\node[comp, below=0.8cm of backend, text width=4.0cm] (preproc) {
     \textbf{OpenCV Video Pipeline}\\
     \textit{app/preprocessing.py}\\
-    \vspace{0.15cm}
-    \footnotesize
-    $\bullet$ Uniform 33-frame Linspace Sample\\
+    \vspace{0.1cm}
+    \scriptsize
+    $\bullet$ 33-frame Linspace Sample\\
     $\bullet$ BGR $\to$ RGB Color Transform\\
-    $\bullet$ Resolution: $224\times224$ / $112\times112$\\
-    $\bullet$ Normalization: $[0, 255]$ vs $[0, 1]$
+    $\bullet$ Resize: $224^2$ / $112^2$\\
+    $\bullet$ Scale: $[0, 255]$ vs $[0, 1]$
 };
 
 % Inference Engine Singleton
-\node[model, below=1.2cm of preproc, text width=4.4cm] (engine) {
+\node[model, below=0.8cm of preproc, text width=4.0cm] (engine) {
     \textbf{MultiModelInferenceEngine}\\
     \textit{app/inference.py (Singleton)}\\
-    \vspace{0.15cm}
-    \footnotesize
+    \vspace{0.1cm}
+    \scriptsize
     $\bullet$ In-Memory Model Cache\\
     $\bullet$ 76-Class Mapping Resolver\\
     $\bullet$ Top-K Candidate Extraction\\
@@ -67,11 +68,11 @@
 };
 
 % Loaded Model Artifacts
-\node[model, left=1.6cm of engine, text width=4.0cm] (models) {
-    \textbf{Trained Keras Model Store}\\
+\node[model, left=1.1cm of engine, text width=3.8cm] (models) {
+    \textbf{Trained Keras Models}\\
     \textit{backend/artifacts/}\\
-    \vspace{0.15cm}
-    \footnotesize
+    \vspace{0.1cm}
+    \scriptsize
     $\bullet$ \textbf{MobileNetV2 Frozen} (67.78\%)\\
     $\bullet$ \textbf{Custom 2D CNN} (5.00\%)\\
     $\bullet$ \textbf{CNN-LSTM Sequence} (4.44\%)\\
@@ -79,13 +80,13 @@
 };
 
 % Connectors
-\draw[arrow] (client.east) -- node[above, font=\footnotesize] {Upload} (api.west);
+\draw[arrow] (client.east) -- node[above, font=\scriptsize] {Upload} (api.west);
 \draw[arrow] (api.east) -- (backend.west);
-\draw[arrow] (backend.south) -- node[right, font=\footnotesize] {Raw Video} (preproc.north);
-\draw[arrow] (preproc.south) -- node[right, font=\footnotesize] {Tensors} (engine.north);
-\draw[arrow] (models.east) -- node[above, font=\footnotesize] {Cached Weights} (engine.west);
+\draw[arrow] (backend.south) -- node[right, font=\scriptsize] {Raw Video} (preproc.north);
+\draw[arrow] (preproc.south) -- node[right, font=\scriptsize] {Tensors} (engine.north);
+\draw[arrow] (models.east) -- node[above, font=\scriptsize] {Cached Weights} (engine.west);
 
 % Response loop
-\draw[arrow, dashed] (engine.south) -- ++(0,-0.4) -| node[near start, below, font=\footnotesize] {Predictions, Top-5, Latency} (client.south);
+\draw[arrow, dashed] (engine.south) -- ++(0,-0.3) -| node[near start, below, font=\scriptsize] {Predictions, Top-5, Latency} (client.south);
 
 \end{tikzpicture}

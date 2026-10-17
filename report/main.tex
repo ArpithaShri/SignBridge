@@ -1,32 +1,33 @@
-\documentclass[12pt,a4paper,oneside]{report}
+\documentclass[11pt,a4paper,oneside]{report}
 
 % ----------------------------------------------------------------------
-% Core Geometry and Layout
+% Page Geometry and Typography
 % ----------------------------------------------------------------------
 \usepackage[
-    top=2.5cm,
-    bottom=2.5cm,
-    left=3.0cm,
-    right=2.5cm,
-    headheight=15pt,
-    footskip=1.2cm
+    top=2.2cm,
+    bottom=2.2cm,
+    left=2.5cm,
+    right=2.2cm,
+    headheight=14pt,
+    footskip=1.0cm
 ]{geometry}
 
 \usepackage{setspace}
-\onehalfspacing
+\setstretch{1.14}
 
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
+\usepackage{microtype}
 
 % ----------------------------------------------------------------------
 % Mathematics and Symbols
 % ----------------------------------------------------------------------
-\usepackage{amsmath,amssymb,amsfonts,amsthm}
+\usepackage{amsmath,amssymb,amsfonts}
 \usepackage{bm}
 
 % ----------------------------------------------------------------------
-% Graphics, Colors, and Visuals
+% Visual Elements, Colors, and TikZ
 % ----------------------------------------------------------------------
 \usepackage{graphicx}
 \usepackage{xcolor}
@@ -39,41 +40,53 @@
 \definecolor{codepurple}{RGB}{128, 0, 128}
 
 \usepackage{tikz}
-\usetikzlibrary{shapes,arrows,positioning,fit,calc,decorations.pathreplacing}
+\usetikzlibrary{shapes,arrows,positioning,fit,calc}
 
 % ----------------------------------------------------------------------
-% Tables and Alignment
+% Compact Heading Formatting (titlesec)
+% ----------------------------------------------------------------------
+\usepackage{titlesec}
+\titleformat{\chapter}[hang]
+  {\normalfont\Large\bfseries\color{brandblue}}
+  {\thechapter.}{0.6em}{}
+\titlespacing*{\chapter}{0pt}{14pt plus 2pt minus 2pt}{8pt plus 2pt minus 2pt}
+
+\titleformat{\section}
+  {\normalfont\large\bfseries\color{darkslate}}
+  {\thesection}{0.5em}{}
+\titlespacing*{\section}{0pt}{10pt plus 2pt minus 2pt}{4pt plus 1pt minus 1pt}
+
+\titleformat{\subsection}
+  {\normalfont\normalsize\bfseries\color{darkslate}}
+  {\thesubsection}{0.5em}{}
+\titlespacing*{\subsection}{0pt}{8pt plus 2pt minus 2pt}{3pt plus 1pt minus 1pt}
+
+% ----------------------------------------------------------------------
+% Tables and Captions
 % ----------------------------------------------------------------------
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{array}
-\usepackage{multirow}
 \usepackage{caption}
-\usepackage{subcaption}
-\captionsetup{font=small,labelfont=bf,margin=10pt}
+\captionsetup{font=small,labelfont=bf,skip=5pt}
 
 % ----------------------------------------------------------------------
-% Source Code Listings
+% Listings
 % ----------------------------------------------------------------------
 \usepackage{listings}
 \lstset{
     backgroundcolor=\color{codebg},
-    basicstyle=\ttfamily\footnotesize,
+    basicstyle=\ttfamily\scriptsize,
     breaklines=true,
-    breakatwhitespace=true,
     frame=single,
     rulecolor=\color{codeframe},
-    numbers=left,
-    numberstyle=\tiny\color{gray},
-    stepnumber=1,
-    numbersep=8pt,
-    tabsize=4,
+    numbers=none,
+    tabsize=2,
     showstringspaces=false,
     keywordstyle=\color{brandblue}\bfseries,
     commentstyle=\color{codegreen}\itshape,
     stringstyle=\color{codepurple},
-    captionpos=b,
-    escapeinside={\%*}{*)}
+    captionpos=b
 }
 
 % ----------------------------------------------------------------------
@@ -82,22 +95,21 @@
 \usepackage{fancyhdr}
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\small\nouppercase{\leftmark}}
-\fancyhead[R]{\small\thepage}
-\fancyfoot[C]{\small SignBridge — Case Study Report}
-\renewcommand{\headrulewidth}{0.5pt}
+\fancyhead[L]{\footnotesize\nouppercase{\leftmark}}
+\fancyhead[R]{\footnotesize\thepage}
+\fancyfoot[C]{\footnotesize SignBridge — Indian Sign Language Video Recognition}
+\renewcommand{\headrulewidth}{0.4pt}
 \renewcommand{\footrulewidth}{0.3pt}
 
-% Redefine plain page style for chapter beginnings
 \fancypagestyle{plain}{
     \fancyhf{}
-    \fancyfoot[C]{\small\thepage}
+    \fancyfoot[C]{\footnotesize\thepage}
     \renewcommand{\headrulewidth}{0pt}
     \renewcommand{\footrulewidth}{0.3pt}
 }
 
 % ----------------------------------------------------------------------
-% Hyperlinks and Cross-Referencing
+% Hyperlinks and Citations
 % ----------------------------------------------------------------------
 \usepackage{hyperref}
 \hypersetup{
@@ -105,103 +117,80 @@
     linkcolor=brandblue,
     citecolor=brandblue,
     urlcolor=brandblue,
-    filecolor=brandblue,
-    pdftitle={SignBridge — Indian Sign Language Video Recognition: Case Study Report},
-    pdfauthor={SignBridge Project Team},
-    pdfsubject={Academic Case Study Report on Deep Learning for ISL Video Recognition},
-    pdfkeywords={Indian Sign Language, Deep Learning, MobileNetV2, CNN-LSTM, Computer Vision}
+    pdftitle={SignBridge — Indian Sign Language Video Recognition},
+    pdfauthor={SignBridge Project Team}
 }
-
 \usepackage{cite}
 
 % ----------------------------------------------------------------------
-% Document Structure
+% Document Body
 % ----------------------------------------------------------------------
 \begin{document}
 
-% ----------------------------------------------------------------------
-% Title Page
-% ----------------------------------------------------------------------
+% Title Page (1 Page)
 \begin{titlepage}
     \centering
-    \vspace*{0.5cm}
+    \vspace*{0.3cm}
     
-    {\huge \bfseries SignBridge\par}
-    \vspace{0.4cm}
+    {\LARGE \bfseries SignBridge\par}
+    \vspace{0.25cm}
     {\Large \bfseries Indian Sign Language Video Recognition\par}
-    \vspace{0.6cm}
+    \vspace{0.4cm}
     {\large \textsc{A Technical Case Study Report}\par}
     
-    \vspace{1.5cm}
-    \rule{0.85\textwidth}{1.2pt}
-    \vspace{0.8cm}
+    \vspace{1.0cm}
+    \rule{0.85\textwidth}{1.0pt}
+    \vspace{0.6cm}
     
-    {\large Submitted in partial fulfillment of the requirements\\
+    {\normalsize Submitted in partial fulfillment of the requirements\\
     for the award of the degree of\par}
-    \vspace{0.4cm}
+    \vspace{0.25cm}
     {\large \bfseries [Degree Name, e.g., Bachelor of Technology]\par}
-    \vspace{0.2cm}
-    {\large in\par}
-    \vspace{0.2cm}
-    {\large \bfseries [Department Name, e.g., Department of Computer Science and Engineering]\par}
+    \vspace{0.15cm}
+    {\normalsize in\par}
+    \vspace{0.15cm}
+    {\normalsize \bfseries [Department of Computer Science and Engineering]\par}
     
-    \vspace{1.5cm}
+    \vspace{1.2cm}
     \begin{minipage}{0.48\textwidth}
-        \begin{flushleft} \large
+        \begin{flushleft} \normalsize
             \emph{Submitted By:}\\
-            \textbf{[Student Name / Candidate]}\\[0.15cm]
-            \text{Register No: [Register Number]}\\[0.15cm]
+            \textbf{[Student Name / Candidate]}\\[0.1cm]
+            \text{Register No: [Register Number]}\\[0.1cm]
             \text{[Collaborator Name (Optional)]}
         \end{flushleft}
     \end{minipage}
     \hfill
     \begin{minipage}{0.48\textwidth}
-        \begin{flushright} \large
-            \emph{Under the Supervision of:}\\
-            \textbf{[Supervisor / Faculty Guide Name]}\\[0.15cm]
-            \text{[Designation / Department]}\\[0.15cm]
+        \begin{flushright} \normalsize
+            \emph{Supervised By:}\\
+            \textbf{[Supervisor / Faculty Guide]}\\[0.1cm]
+            \text{[Designation / Department]}\\[0.1cm]
             \text{[Institution / University Name]}
         \end{flushright}
     \end{minipage}
     
     \vfill
-    \rule{0.85\textwidth}{1.2pt}
-    \vspace{0.8cm}
+    \rule{0.85\textwidth}{1.0pt}
+    \vspace{0.5cm}
     
-    {\large \bfseries [Institution / College / University Name]}\par
-    \vspace{0.2cm}
-    {\normalsize [City, State, Country]}\par
-    \vspace{0.4cm}
-    {\normalsize \textbf{Date / Academic Session:} [Month, Year, e.g., October 2026]}\par
-    
-    \vspace*{0.5cm}
+    {\normalsize \bfseries [Institution / College / University Name]}\par
+    \vspace{0.15cm}
+    {\small [City, State, Country] \quad $\bullet$ \quad \textbf{Academic Session:} [Month, Year, e.g., October 2026]}\par
+    \vspace*{0.2cm}
 \end{titlepage}
 
-% ----------------------------------------------------------------------
-% Front Matter
-% ----------------------------------------------------------------------
+% Front Matter: Abstract & Table of Contents (Pages 2-3)
 \pagenumbering{roman}
 \setcounter{page}{1}
 
-% Abstract
 \input{chapters/00_abstract.tex}
 \clearpage
 
-% Table of Contents
 \tableofcontents
 \clearpage
 
-% List of Figures
-\listoffigures
-\clearpage
-
-% List of Tables
-\listoftables
-\clearpage
-
-% ----------------------------------------------------------------------
-% Main Chapters
-% ----------------------------------------------------------------------
+% Main Body (Pages 4 - 18)
 \pagenumbering{arabic}
 \setcounter{page}{1}
 
@@ -217,16 +206,11 @@
 \input{chapters/10_challenges_limitations.tex}
 \input{chapters/11_conclusion_future_work.tex}
 
-% ----------------------------------------------------------------------
-% Bibliography
-% ----------------------------------------------------------------------
+% Back Matter: References & Appendices (Pages 19 - 20)
 \addcontentsline{toc}{chapter}{References}
 \bibliographystyle{IEEEtran}
 \bibliography{references}
 
-% ----------------------------------------------------------------------
-% Appendices
-% ----------------------------------------------------------------------
 \input{chapters/12_appendices.tex}
 
 \end{document}

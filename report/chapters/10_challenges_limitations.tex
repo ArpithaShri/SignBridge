@@ -3,30 +3,19 @@
 
 \section{Observed Implementation Challenges}
 \label{sec:observed_challenges}
-During the engineering, training, and deployment of the SignBridge system, several distinct technical hurdles were encountered and addressed:
-
-\subsection{Video Preprocessing and Container Inconsistencies}
-A major engineering challenge involved handling disparate video container formats across operating systems and browsers. Consumer mobile devices frequently record in QuickTime (\texttt{.MOV}) containers using variable frame rate (VFR) encodings or proprietary metadata flags, while modern web browsers output webcam streams in WebM (\texttt{.webm}) format via the HTML5 MediaRecorder API.
-
-Standard video decoders frequently fail when parsing video files lacking seek index tables or standard header duration metadata. In early implementations, this caused \texttt{cv2.VideoCapture.get(cv2.CAP\_PROP\_FRAME\_COUNT)} to return negative or zero frame counts, leading to index out-of-bound crashes. To resolve this, a dual-path decoding fallback was implemented in \texttt{decode\_video\_frames()}: if the frame count header is absent, the pipeline sequentially streams all readable frames into an in-memory buffer before applying linear spacing subsampling.
-
-\subsection{Preprocessing Protocol Parity}
-Ensuring exact parity between offline training preprocessing and real-time backend inference proved vital. Minor discrepancies in color-space (BGR vs. RGB), interpolation algorithms (\texttt{INTER\_NEAREST} vs. \texttt{INTER\_AREA}), or numerical pixel normalization ($[0, 255]$ vs. $[-1, 1]$ vs. $[0, 1]$) lead to silent, severe inference degradation. In particular, MobileNetV2 embeds an internal rescaling layer ($x/127.5 - 1$), whereas Custom CNN and CNN-LSTM expect raw $[0, 1]$ float inputs. Normalization logic had to be strictly decoupled and validated per model in \texttt{backend/app/preprocessing.py}.
-
-\subsection{Memory Leaks and Disk Spooling}
-In an API serving video uploads, file buffers must be written to disk for OpenCV decoding. Unhandled exceptions during model inference previously risked leaving orphaned video files in system temporary directories, consuming storage indefinitely. This was resolved by wrapping the temporary file lifecycle in guaranteed \texttt{try...finally} blocks that execute \texttt{os.remove(temp\_path)} under all exit conditions.
-
-\subsection{Optimization Collapse in Scratch Models}
-As documented in Chapter \ref{ch:experiments}, attempting to train the Custom 2D CNN and CNN-LSTM architectures from scratch resulted in severe performance bottlenecks. With only 806 training videos spanning 76 fine-grained classes ($\approx 10.6$ videos per class), the models suffered from high variance and gradient instability. Extensive data augmentation (rotation, zoom, translation) and dropout regularization were insufficient to compensate for the fundamental lack of generic visual priors.
+During system development, three primary engineering challenges were resolved:
+\begin{enumerate}
+    \item \textbf{Container and Encoding Inconsistencies}: WebM and QuickTime streams from varied browser devices frequently lack frame-count metadata in container headers. A dual-path fallback was implemented in \texttt{decode\_video\_frames()} to sequentially buffer frames before linspace subsampling.
+    \item \textbf{Preprocessing Protocol Parity}: Discrepancies in color-space (BGR vs. RGB), interpolation (\texttt{INTER\_AREA}), or normalization ($[0, 255]$ with internal rescaling vs. $[0, 1]$ float scaling) directly degrade inference. Preprocessing paths were strictly validated per model.
+    \item \textbf{Temporary File Leakage}: Video buffers streamed to disk were wrapped in guaranteed \texttt{try...finally} blocks executing \texttt{os.remove(temp\_path)} to prevent server disk spooling leaks.
+\end{enumerate}
 
 \section{Current System Limitations}
 \label{sec:system_limitations}
-The current SignBridge implementation operates within several concrete technical boundaries:
-
+The current SignBridge implementation operates under the following technical boundaries:
 \begin{enumerate}
-    \item \textbf{Isolated Sign Constraint}: The system recognizes individual, pre-segmented lexical sign words. It cannot transcribe continuous signing conversations where words blend smoothly without pauses (co-articulation).
-    \item \textbf{Vocabulary Boundary}: The vocabulary is fixed to the 76 discrete word classes defined in \texttt{class\_mapping.json}. Out-of-vocabulary gestures are forced into the nearest 76-class distribution, potentially generating false-positive predictions.
-    \item \textbf{Spatial Resolution Bottlenecks}: Standardizing frames to $224\times224$ (or $112\times112$) pixels constrains computational complexity but discards ultra-fine spatial details, such as subtle distal finger joint flexions or small eye gaze shifts.
-    \item \textbf{Lack of Explicit 3D Skeleton Keypoints}: SignBridge relies entirely on raw RGB pixel frames. It does not integrate explicit 3D skeletal landmark trackers (such as MediaPipe Holistic), which could decouple hand shape and joint coordinates from background textures and skin-tone variations.
-    \item \textbf{Monocular Depth Ambiguity}: Standard 2D RGB video captures lack depth coordinates. Hand motions moving directly toward or away from the camera lens (along the $z$-axis) appear primarily as scale changes, inducing ambiguity between hand size variations and actual forward-backward gesture trajectories.
+    \item \textbf{Isolated Sign Constraint}: The system recognizes isolated lexical words; it does not transcribe continuous sentences or model co-articulation across multi-sign discourse.
+    \item \textbf{Fixed 76-Class Vocabulary}: The recognition domain is bounded to the 76 classes in \texttt{class\_mapping.json}; out-of-vocabulary gestures are projected onto the nearest class distribution.
+    \item \textbf{Spatial Resolution Tradeoff}: Standardizing frames to $224\times224$ pixels reduces computational overhead but limits resolution for fine distal finger flexions.
+    \item \textbf{Monocular 2D Depth Ambiguity}: Standard monocular RGB video lacks depth coordinates, inducing ambiguity between forward-backward hand motion trajectories and scale changes.
 \end{enumerate}

@@ -1,0 +1,103 @@
+\begin{tikzpicture}[
+    scale=0.82, transform shape,
+    font=\small\sffamily,
+    node distance=0.55cm and 0.5cm,
+    block/.style={draw=blue!70!black, fill=blue!5, rounded corners=3pt, align=center, inner sep=4pt, text width=4.3cm, line width=0.8pt},
+    frozen/.style={draw=teal!70!black, fill=teal!8, rounded corners=3pt, align=center, inner sep=4pt, text width=4.3cm, line width=1.0pt},
+    lstm/.style={draw=purple!70!black, fill=purple!6, rounded corners=3pt, align=center, inner sep=4pt, text width=4.3cm, line width=1.0pt},
+    head/.style={draw=orange!70!black, fill=orange!8, rounded corners=3pt, align=center, inner sep=4pt, text width=4.3cm, line width=0.8pt},
+    arrow/.style={->, >=stealth, line width=0.9pt, draw=gray!70!black}
+]
+
+% COLUMN 1: MobileNetV2
+\node[block, draw=brandblue, fill=blue!8] (m1_in) {
+    \textbf{MobileNetV2 (Frozen)}\\
+    \scriptsize Input: $(33, 224, 224, 3)$ in $[0, 255]$
+};
+\node[block, below=of m1_in] (m1_rescale) {
+    \scriptsize \texttt{Rescaling: }$x \mapsto x/127.5 - 1 \in [-1, 1]$
+};
+\node[frozen, below=of m1_rescale] (m1_bb) {
+    \textbf{Frozen ImageNet Backbone}\\
+    \scriptsize \texttt{mobilenetv2\_1.00\_224} (155 layers)\\
+    \scriptsize GlobalAvgPool2D $\to 1,280$ features\\
+    \textbf{\scriptsize 2,257,984 Non-Trainable Params}
+};
+\node[head, below=of m1_bb] (m1_dense) {
+    \scriptsize \texttt{Dense(256, ReLU)} [327,936 params]\\
+    \scriptsize \texttt{Dropout(0.3)} $\to$ \texttt{Dense(76, Softmax)} [19,532]
+};
+\node[block, below=of m1_dense, fill=green!8, draw=green!60!black] (m1_out) {
+    \textbf{\scriptsize Mean Frame Probabilities}\\
+    $\bar{\mathbf{p}} = \frac{1}{33} \sum_{t=1}^{33} \mathbf{p}_t$ \quad \textbf{\scriptsize (67.78\% Test Acc)}\\
+    \scriptsize Total: 2,605,452 | Trainable: 347,468
+};
+
+\draw[arrow] (m1_in) -- (m1_rescale);
+\draw[arrow] (m1_rescale) -- (m1_bb);
+\draw[arrow] (m1_bb) -- (m1_dense);
+\draw[arrow] (m1_dense) -- (m1_out);
+
+% COLUMN 2: Custom 2D CNN
+\node[block, draw=brandblue, fill=blue!8, right=0.5cm of m1_in] (c1_in) {
+    \textbf{Custom 2D CNN (Scratch)}\\
+    \scriptsize Input: $(33, 224, 224, 3)$ in $[0, 1]$
+};
+\node[block, below=of c1_in] (c1_aug) {
+    \scriptsize \texttt{Augmentation: }Rot, Zoom, Translation
+};
+\node[block, below=of c1_aug] (c1_convs) {
+    \textbf{3 Conv + MaxPool Blocks}\\
+    \scriptsize \texttt{Conv2D(32, 3$\times$3)} $\to$ \texttt{MaxPool(2$\times$2)} [896]\\
+    \scriptsize \texttt{Conv2D(64, 3$\times$3)} $\to$ \texttt{MaxPool(2$\times$2)} [18.5K]\\
+    \scriptsize \texttt{Conv2D(128, 3$\times$3)} $\to$ \texttt{MaxPool(2$\times$2)} [73.9K]\\
+    \scriptsize GlobalAvgPool2D $\to 128$ features
+};
+\node[head, below=of c1_convs] (c1_dense) {
+    \scriptsize \texttt{Dense(128, ReLU)} [16,512 params]\\
+    \scriptsize \texttt{Dropout(0.3)} $\to$ \texttt{Dense(76, Softmax)} [9,804]
+};
+\node[block, below=of c1_dense, fill=red!6, draw=red!60!black] (c1_out) {
+    \textbf{\scriptsize Mean Frame Probabilities}\\
+    $\bar{\mathbf{p}} = \frac{1}{33} \sum_{t=1}^{33} \mathbf{p}_t$ \quad \textbf{\scriptsize (5.00\% Test Acc)}\\
+    \scriptsize Total: 119,564 | 100\% Trainable
+};
+
+\draw[arrow] (c1_in) -- (c1_aug);
+\draw[arrow] (c1_aug) -- (c1_convs);
+\draw[arrow] (c1_convs) -- (c1_dense);
+\draw[arrow] (c1_dense) -- (c1_out);
+
+% COLUMN 3: CNN-LSTM
+\node[block, draw=brandblue, fill=blue!8, right=0.5cm of c1_in] (l1_in) {
+    \textbf{CNN-LSTM (Spatio-Temporal)}\\
+    \scriptsize Input: $(1, 33, 112, 112, 3)$ in $[0, 1]$
+};
+\node[block, below=of l1_in] (l1_td) {
+    \textbf{TimeDistributed Spatial Blocks}\\
+    \scriptsize \texttt{TD(Conv2D(32)) + TD(MaxPool)} [896]\\
+    \scriptsize \texttt{TD(Conv2D(64)) + TD(MaxPool)} [18.5K]\\
+    \scriptsize \texttt{TD(GlobalAvgPool2D)} $\to (33, 64)$
+};
+\node[lstm, below=of l1_td] (l1_rec) {
+    \textbf{Temporal Sequence Model}\\
+    \scriptsize \texttt{LSTM(128 units, seq=False)}\\
+    \scriptsize Integrates ordered 33-frame trajectory\\
+    \textbf{\scriptsize 98,816 Recurrent Parameters}
+};
+\node[head, below=of l1_rec] (l1_dense) {
+    \scriptsize \texttt{Dropout(0.3)}\\
+    \scriptsize \texttt{Dense(76, Softmax)} [9,804 params]
+};
+\node[block, below=of l1_dense, fill=red!6, draw=red!60!black] (l1_out) {
+    \textbf{\scriptsize Direct Sequence Probability}\\
+    $\mathbf{p} \in \mathbb{R}^{76}$ (no frame averaging) \quad \textbf{\scriptsize (4.44\% Test Acc)}\\
+    \scriptsize Total: 128,012 | 100\% Trainable
+};
+
+\draw[arrow] (l1_in) -- (l1_td);
+\draw[arrow] (l1_td) -- (l1_rec);
+\draw[arrow] (l1_rec) -- (l1_dense);
+\draw[arrow] (l1_dense) -- (l1_out);
+
+\end{tikzpicture}

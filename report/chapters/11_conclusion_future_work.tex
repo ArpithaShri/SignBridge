@@ -3,31 +3,23 @@
 
 \section{Summary of Achievements}
 \label{sec:conclusion_summary}
-This case study report presented the design, implementation, and empirical evaluation of \textbf{SignBridge}---an end-to-end deep learning framework and web application engineered to recognize 76 dynamic Indian Sign Language (ISL) word classes from video clips. 
+This case study report presented \textbf{SignBridge}---an end-to-end deep learning framework and web application engineered to recognize 76 dynamic Indian Sign Language (ISL) word classes from video clips. 
 
-Key verified achievements of the project include:
+Key verified outcomes include:
 \begin{enumerate}
-    \item \textbf{Standardized Preprocessing Pipeline}: Engineered a robust OpenCV video ingestion module that uniformly extracts 33 frames across varying video durations using linear spacing (\texttt{np.linspace}), standardizes resolutions ($224\times224$ and $112\times112$), and handles diverse video containers (\texttt{.MOV}, \texttt{.mp4}, \texttt{.avi}, \texttt{.webm}).
-    \item \textbf{Comprehensive Multi-Model Benchmarking}: Implemented, trained, and rigorously benchmarked three foundational deep learning paradigms on an identical 1,166-video dataset (806 train, 180 validation, 180 test) across 76 classes:
-    \begin{itemize}
-        \item \textbf{MobileNetV2 (Frozen Backbone)}: Achieved top performance with \textbf{67.78\%} test accuracy and \textbf{66.42\%} Macro $F_1$-score via multi-frame temporal probability averaging.
-        \item \textbf{Custom 2D CNN (Scratch Baseline)}: Achieved \textbf{5.00\%} test accuracy, illustrating acute representation bottlenecks when learning from scratch.
-        \item \textbf{CNN-LSTM (Spatio-Temporal Model)}: Achieved \textbf{4.44\%} test accuracy and \textbf{12.78\%} top-3 accuracy, demonstrating the dual-optimization challenge of joint spatial and recurrent learning on small datasets.
-        \item \textbf{Equal-Weight Late Fusion}: Achieved \textbf{60.56\%} test accuracy, demonstrating that fusing underperforming scratch models degrades MobileNetV2's superior standalone performance.
-    \end{itemize}
-    \item \textbf{Production-Grade Low-Latency Backend}: Deployed a FastAPI service featuring in-memory singleton weight caching, eliminating cold-start delays and achieving sub-200\,ms CPU inference latency per video clip.
-    \item \textbf{Modern Accessible Web Application}: Developed a responsive React 19 / TypeScript single-page application integrating local file upload, browser webcam capture via HTML5 MediaRecorder, real-time health monitoring, and a multi-model consensus comparison suite.
+    \item \textbf{Standardized Preprocessing Pipeline}: Uniform 33-frame linspace extraction and area-based resizing handling diverse video containers (\texttt{.mov}, \texttt{.mp4}, \texttt{.webm}).
+    \item \textbf{Multi-Model Empirical Benchmarking}: Rigorous evaluation across 76 classes on a strictly held-out 180-video test split demonstrating that \textbf{MobileNetV2} (67.78\% test accuracy, 66.42\% Macro $F_1$) substantially outperforms scratch-trained Custom CNN (5.00\%) and CNN-LSTM (4.44\%).
+    \item \textbf{Low-Latency Production Backend}: A FastAPI microservice featuring in-memory singleton model weight caching that delivers sub-200\,ms CPU inference latency per video clip.
+    \item \textbf{Accessible Full-Stack Web Application}: A modern React 19 / TypeScript single-page application supporting file upload, HTML5 webcam capture, and tri-model consensus comparison.
 \end{enumerate}
 
 \section{Realistic Directions for Future Work}
 \label{sec:future_work}
-While SignBridge delivers a strong, verified baseline for isolated dynamic ISL recognition, several promising research avenues exist to advance the platform toward broader real-world deployment:
-
+Promising directions for future development include:
 \begin{enumerate}
-    \item \textbf{Dataset Scaling and Signer Diversity}: Expanding the video corpus beyond 1,166 samples to include thousands of recordings captured across hundreds of diverse signers of varying age groups, genders, and regional signing dialects will enhance true signer-independent generalization.
-    \item \textbf{Pretrained Spatio-Temporal Backbones}: Rather than training recurrent models from scratch, future iterations should explore fine-tuning video models pre-trained on large-scale video action datasets (e.g., VideoMAE, I3D, or TimeSformer) or combining pre-trained spatial backbones (such as MobileNetV2 or ConvNeXt) with temporal Transformer self-attention mechanisms.
-    \item \textbf{Integration of Skeletal Landmark Modalities}: Incorporating real-time 3D landmark extractors (e.g., MediaPipe Holistic or OpenPose) can extract 3D coordinates for hands, face mesh, and pose. Fusing spatial graph convolutional networks (GCNs) operating on skeletal graphs with RGB visual features would decouple gesture geometry from background textures and skin-tone variations.
-    \item \textbf{Continuous Sign Language Translation (CSLT)}: Extending the framework from isolated word recognition to continuous sentence translation using Connectionist Temporal Classification (CTC) or sequence-to-sequence encoder-decoder architectures with attention mechanisms.
-    \item \textbf{Client-Side Edge Deployment}: Converting the trained MobileNetV2 Keras model into TensorFlow Lite (\texttt{.tflite}) or ONNX formats, enabling direct in-browser inference via WebAssembly (Wasm) or WebGPU without requiring network transmission to the backend server.
-    \item \textbf{Adaptive Top-$K$ User Disambiguation}: Incorporating interactive user feedback loops in the web UI where, in cases of low-confidence predictions, the system prompts the user to disambiguate between top-2 ranked candidates.
+    \item \textbf{Dataset Expansion and Signer Diversity}: Expanding the corpus beyond 1,166 clips to thousands of samples across diverse signers, age groups, and regional ISL dialects.
+    \item \textbf{Pre-trained Video Backbones & Transformers}: Exploring spatio-temporal video Transformers (e.g., TimeSformer) or fusing pre-trained spatial CNN features with multi-head self-attention mechanisms.
+    \item \textbf{3D Skeletal Landmark Integration}: Fusing 3D hand and pose landmarks (e.g., MediaPipe Holistic) with RGB features via Spatial-Temporal Graph Convolutional Networks (ST-GCNs) to decouple gesture geometry from background textures and skin-tone variations.
+    \item \textbf{Continuous Sign Language Translation}: Extending from isolated words to continuous sentence translation using Connectionist Temporal Classification (CTC) or sequence-to-sequence encoder-decoders.
+    \item \textbf{Client-Side Edge Deployment}: Exporting MobileNetV2 to TensorFlow Lite / ONNX for direct in-browser inference via WebAssembly (Wasm) or WebGPU.
 \end{enumerate}

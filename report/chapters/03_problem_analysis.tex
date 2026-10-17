@@ -1,117 +1,49 @@
 \chapter{Problem Analysis and Requirements}
 \label{ch:requirements}
 
-\section{Existing Challenges}
-\label{sec:existing_challenges}
-Developing an automated Indian Sign Language recognition system presents multifaceted engineering, visual, and computational challenges:
-\begin{enumerate}
-    \item \textbf{High Dimensionality and Temporal Redundancy}: A typical 3-second consumer video clip recorded at 30 frames per second contains 90 high-resolution frames ($1920\times1080$ pixels). Processing every raw frame through deep neural networks introduces prohibitive latency ($\gg 1$\,second), consuming extensive memory bandwidth while adding minimal discriminative signal due to frame-to-frame visual redundancy.
-    \item \textbf{Inconsistent Video Durations and Frame Rates}: Input video files uploaded from diverse mobile devices, cameras, and browsers arrive with widely fluctuating durations (ranging from 1.0 to 6.0 seconds), variable frame rates (15\,fps to 60\,fps), and disparate container formats (\texttt{.MOV}, \texttt{.mp4}, \texttt{.avi}, \texttt{.webm}). The recognition pipeline must enforce temporal standardization to deliver a fixed-length tensor representation for neural models.
-    \item \textbf{Complex Articulation and Visual Ambiguity}: Dynamic ISL gestures incorporate subtle finger configurations, rapid hand movements, self-occlusions (e.g., one hand occluding the other or crossing the face), motion blur, and perspective distortion caused by unconstrained camera angles.
-    \item \textbf{Resource-Constrained Serving and Cold-Start Latency}: Naive machine learning web services often reload model weights from disk on every incoming HTTP request, introducing multi-second cold-start delays. An effective system must decouple model loading from request handling.
-    \item \textbf{Lack of Cross-Model Verification}: In real-world assistive applications, single-model predictions can fail silently with misleading confidence scores. A system providing cross-architecture consensus comparison offers greater diagnostic interpretability.
-\end{enumerate}
+\section{Existing Challenges and Proposed Solution}
+\label{sec:challenges_solution}
+Dynamic sign language recognition presents distinct engineering and visual challenges: (1) temporal redundancy and high processing latency across multi-frame video, (2) inconsistent video durations and frame rates across consumer cameras, (3) visual ambiguity caused by rapid hand motions and self-occlusions, and (4) cold-start latency in web services that reload model weights per request.
 
-\section{Proposed Solution}
-\label{sec:proposed_solution}
-To resolve these challenges, the \textbf{SignBridge} framework is designed as an end-to-end, hardware-agnostic, full-stack deep learning solution comprising:
+The \textbf{SignBridge} framework resolves these challenges through:
 \begin{itemize}
-    \item \textbf{Uniform Temporal Sampling Engine}: An OpenCV-based decoding and frame-sampling module that dynamically samples exactly 33 representative frames across any video clip's duration using mathematical linear spacing, eliminating frame-rate dependency while preserving temporal dynamics.
-    \item \textbf{Standardized Spatial Preprocessing Pipeline}: Automatic color-space conversion (BGR to RGB), bilinear/area-based resizing to $224\times224$ (or $112\times112$), and model-specific numerical scaling ($[0, 255]$ for MobileNetV2 with internal normalization versus $[0, 1]$ float32 normalization for scratch models).
-    \item \textbf{Multi-Model Inference Engine}: A production-grade Python singleton that loads pre-trained Keras model weights and 76-class label mappings into memory once during application startup, executing predictions in $<200$\,ms.
-    \item \textbf{Tri-Model Benchmarking and Consensus Matrix}: Support for MobileNetV2 (primary predictor), Custom 2D CNN, and CNN-LSTM architectures, providing side-by-side comparative inference, top-5 probability distributions, and consensus analysis (full consensus, majority agreement, or divergence).
-    \item \textbf{Modern Reactive Web Interface}: A responsive single-page web application built with React 19, TypeScript, and Vite, featuring drag-and-drop file upload, live in-browser webcam recording with countdown timer, real-time health polling, and accessible result visualization.
+    \item \textbf{Uniform Temporal Linspace Sampling}: Exactly 33 frames sampled via \texttt{np.linspace(0, T-1, 33)}, neutralizing duration and frame-rate variations.
+    \item \textbf{Standardized Preprocessing Pipeline}: Automatic BGR to RGB conversion, spatial resizing ($224\times224$ or $112\times112$), and model-specific numerical normalization.
+    \item \textbf{In-Memory Singleton Inference Engine}: Persistent model caching in FastAPI avoiding cold-start reloads.
+    \item \textbf{Tri-Model Benchmarking & Consensus Suite}: Comparative multi-model evaluation providing consensus analysis across MobileNetV2, Custom CNN, and CNN-LSTM.
+    \item \textbf{Reactive Web Interface}: Modern React 19 / TypeScript single-page application with webcam recording and drag-and-drop video upload.
 \end{itemize}
 
-\section{Functional Requirements}
-\label{sec:functional_requirements}
-The functional requirements of the SignBridge system define the core operational capabilities that the software must provide:
-\begin{enumerate}
-    \item \textbf{FR-1: Video File Ingestion}: The system shall accept user-uploaded video clips in \texttt{.MOV}, \texttt{.mp4}, \texttt{.avi}, and \texttt{.webm} formats with a file size up to 100\,MB.
-    \item \textbf{FR-2: In-Browser Webcam Capture}: The frontend shall allow users to record live sign language gestures directly via their webcam, enforcing a maximum recording duration of 10 seconds, generating an in-memory video blob, and previewing the captured clip.
-    \item \textbf{FR-3: Temporal Frame Extraction}: The preprocessing subsystem shall extract exactly 33 frames uniformly spaced between the start and end of the video sequence using \texttt{np.linspace(0, total\_frames - 1, 33)}.
-    \item \textbf{FR-4: Model-Specific Preprocessing}: The backend shall automatically format extracted frames into the exact tensor dimensions and normalization scale required by the target model:
-    \begin{itemize}
-        \item MobileNetV2: $(33, 224, 224, 3)$ in $[0, 255]$ float32.
-        \item Custom CNN: $(33, 224, 224, 3)$ in $[0, 1]$ float32.
-        \item CNN-LSTM: $(1, 33, 112, 112, 3)$ in $[0, 1]$ float32.
-    \end{itemize}
-    \item \textbf{FR-5: Model Selection and Single-Model Inference}: The system shall allow the user to select an active model (MobileNetV2, Custom CNN, CNN-LSTM, or Late Fusion) and return the top-1 recognized ISL word, top-5 ranked candidates with confidence probabilities, and measured inference time.
-    \item \textbf{FR-6: Tri-Model Comparison and Consensus}: The system shall provide an endpoint (\texttt{POST /api/v1/compare}) that evaluates an identical video file across MobileNetV2, Custom CNN, and CNN-LSTM simultaneously, returning individual predictions, latencies, and consensus agreement status (e.g., 3/3 unanimous agreement, 2/3 majority, or divergent).
-    \item \textbf{FR-7: System Health and Metadata Inspection}: The backend shall provide endpoints (\texttt{GET /api/v1/health} and \texttt{GET /api/v1/model-info}) reporting service status, loaded model states, class vocabulary count, input/output tensor shapes, and preprocessing specifications.
-    \item \textbf{FR-8: Error Validation and Diagnostic Feedback}: The system shall reject unsupported file formats, empty files, or files exceeding 100\,MB with clear HTTP status codes and user-friendly error messages.
-\end{enumerate}
+\section{Functional and Non-Functional Requirements}
+\label{sec:reqs}
+\begin{itemize}
+    \item \textbf{Functional Requirements}: FR-1 Ingestion of \texttt{.MOV}, \texttt{.mp4}, \texttt{.avi}, and \texttt{.webm} files up to 100\,MB; FR-2 Live webcam capture up to 10 seconds via HTML5 MediaRecorder; FR-3 Uniform 33-frame extraction; FR-4 Model-specific tensor formatting; FR-5 Single-model inference with top-1 word, top-5 candidates, and measured latency; FR-6 Multi-model comparison endpoint with agreement count; FR-7 System health and model introspection endpoints; FR-8 Input validation and user error diagnostics.
+    \item \textbf{Non-Functional Requirements}: NFR-1 Low latency ($<200$\,ms CPU inference for MobileNetV2); NFR-2 In-memory model caching; NFR-3 Guaranteed temporary file disk cleanup; NFR-4 Non-blocking UI responsiveness; NFR-5 Modular architecture; NFR-6 Secure Cross-Origin Resource Sharing (CORS).
+\end{itemize}
 
-\section{Non-Functional Requirements}
-\label{sec:non_functional_requirements}
-The non-functional requirements govern the performance, reliability, security, and usability of the platform:
-\begin{enumerate}
-    \item \textbf{NFR-1: Low Latency}: Per-video neural inference on standard modern CPU hardware shall execute within 250 milliseconds for the primary MobileNetV2 model. End-to-end API turnaround time (including upload, decoding, and preprocessing) shall remain under 1.5 seconds on local networks.
-    \item \textbf{NFR-2: Memory Efficiency and In-Memory Caching}: Deep learning model weights and class mappings must be loaded into memory once during application startup. Redundant weight reading from disk on individual requests is strictly prohibited.
-    \item \textbf{NFR-3: Resource Cleanup}: All temporary video files written to disk during upload processing must be deleted within a \texttt{finally} block to prevent storage leakage on the host machine.
-    \item \textbf{NFR-4: Browser Responsiveness}: The frontend must remain responsive during video analysis, providing visual loading spinners and disabling redundant submit actions until processing completes.
-    \item \textbf{NFR-5: Architectural Modularity}: Frontend components and backend services must adhere to modular design principles, isolating preprocessing, inference, configuration, and presentation logic.
-    \item \textbf{NFR-6: Cross-Origin Resource Sharing (CORS)}: The backend must support configurable CORS headers to allow local development across standard Vite ports (\texttt{5173}, \texttt{5174}, \texttt{3000}, etc.) securely.
-\end{enumerate}
-
-\section{Hardware and Software Requirements}
-\label{sec:hw_sw_requirements}
-
-\subsection{Development and Inference Hardware Requirements}
-The hardware requirements for training and local deployment of SignBridge are outlined in Table \ref{tab:hw_requirements}.
+\section{Hardware and Software Specifications}
+\label{sec:hw_sw}
+Table \ref{tab:tech_stack} details the software dependencies and runtime specifications.
 
 \begin{table}[htbp]
 \centering
-\caption{Hardware specifications for model training and application serving.}
-\label{tab:hw_requirements}
-\small
-\begin{tabularx}{\textwidth}{l p{5.5cm} X}
-\toprule
-\textbf{Component} & \textbf{Training Environment (Google Colab / Cloud)} & \textbf{Local Serving / Inference Environment} \\
-\midrule
-\textbf{Processor (CPU)} & Intel Xeon / AMD EPYC (2+ virtual cores) & Intel Core i5/i7 (8th Gen+) or AMD Ryzen 5+ \\
-\textbf{Accelerator (GPU)} & NVIDIA Tesla T4 / P100 (16\,GB VRAM) & Optional (CPU inference fully supported) \\
-\textbf{System Memory (RAM)} & 12\,GB to 16\,GB & 8\,GB minimum (16\,GB recommended) \\
-\textbf{Storage} & 50\,GB SSD (Colab ephemeral workspace) & 5\,GB available disk space (models + dependencies) \\
-\textbf{Camera Modality} & N/A (Offline video dataset processing) & Standard USB / Integrated 720p/1080p RGB Webcam \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-\subsection{Software and Framework Dependencies}
-The software stack for SignBridge is detailed in Table \ref{tab:sw_stack}.
-
-\begin{table}[htbp]
-\centering
-\caption{Software stack and library versions utilized in SignBridge.}
-\label{tab:sw_stack}
-\small
+\caption{SignBridge technical specifications and environment configuration.}
+\label{tab:tech_stack}
+\scriptsize
 \begin{tabularx}{\textwidth}{l l X}
 \toprule
-\textbf{Layer / Component} & \textbf{Technology / Library} & \textbf{Version / Description} \\
+\textbf{Component} & \textbf{Technology / Library} & \textbf{Specification / Role} \\
 \midrule
-\textbf{Runtime Environment} & Python & 3.11 (Keras 3 / TensorFlow 2.16+ compatible) \\
-\textbf{Deep Learning Framework} & TensorFlow \& Keras & TensorFlow $\ge 2.16.0$, Keras $\ge 3.0.0$ \\
-\textbf{Computer Vision} & OpenCV (\texttt{opencv-python-headless}) & $\ge 4.8.0$ (Video decoding, frame extraction, resizing) \\
-\textbf{Numerical Processing} & NumPy & $\ge 1.26.0, < 2.1.0$ (Tensor manipulation, linspace) \\
-\textbf{Web Backend Framework} & FastAPI & $\ge 0.110.0$ (High-performance ASGI REST framework) \\
-\textbf{ASGI Server} & Uvicorn (standard) & $\ge 0.28.0$ (Asynchronous HTTP request handling) \\
-\textbf{Automated Testing} & Pytest \& HTTPX & Pytest $\ge 8.0.0$, HTTPX $\ge 0.27.0$ \\
-\textbf{Frontend Framework} & React & 19.2 (Functional components, hooks, strict mode) \\
-\textbf{Programming Language} & TypeScript & $\sim 6.0$ (Strong typing, interface definitions) \\
-\textbf{Build Tooling} & Vite & $\ge 8.3$ (ESM-based rapid dev server and production bundler) \\
-\textbf{Iconography} & Lucide React & $\ge 1.55$ (Modern SVG visual indicators) \\
-\textbf{Styling} & Modern Vanilla CSS & Custom CSS design tokens, glassmorphism, responsive grid \\
+Backend Runtime & Python 3.11 & High-performance async runtime \\
+API Framework & FastAPI $\ge 0.110.0$ / Uvicorn & Asynchronous REST serving with CORS middleware \\
+Deep Learning & TensorFlow $\ge 2.16.0$ / Keras $\ge 3.0.0$ & Neural inference and graph execution \\
+Computer Vision & OpenCV (\texttt{opencv-python-headless}) & Frame extraction, BGR $\to$ RGB, \texttt{INTER\_AREA} resizing \\
+Frontend Stack & React 19.2 + TypeScript $\sim 6.0$ + Vite $\ge 8.3$ & Reactive UI, client validation, live webcam capture \\
+Testing Suite & Pytest $\ge 8.0.0$ + HTTPX $\ge 0.27.0$ & Automated API validation and preprocessing test coverage \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
 \section{Assumptions and Constraints}
-\label{sec:assumptions_constraints}
-The design and implementation of SignBridge operate under the following engineering assumptions and constraints:
-\begin{enumerate}
-    \item \textbf{Signer Positioning and Illumination}: The user is assumed to be positioned approximately 0.5 to 1.5 meters from the camera, with the head, shoulders, and both hands visible within the video frame under reasonably balanced indoor ambient lighting.
-    \item \textbf{Isolated Lexical Signing}: Each video clip is assumed to capture a single, discrete sign word rather than a continuous, multi-sentence discourse. The start and end of the gesture approximately match the boundaries of the short clip.
-    \item \textbf{Fixed Preprocessing Protocol}: In adherence to machine learning principles, all inference inputs must strictly mirror the frame sampling (33 frames) and spatial resolution ($224\times224$ or $112\times112$) used during model training.
-    \item \textbf{Stateless REST Architecture}: The backend API is designed as a stateless microservice; no persistent user sessions, account credentials, or historical video clips are stored on the server beyond the transient lifetime of the inference request.
-\end{enumerate}
+\label{sec:assumptions}
+Key operational constraints include: (1) signers are positioned 0.5--1.5\,m from the camera with hands and upper torso visible under ambient lighting; (2) video clips capture isolated lexical sign words; (3) inference strictly enforces the 33-frame sampling protocol; and (4) the API is stateless with zero persistent storage of uploaded video clips.

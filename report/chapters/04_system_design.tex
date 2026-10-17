@@ -3,117 +3,46 @@
 
 \section{Overall System Architecture}
 \label{sec:overall_architecture}
-The SignBridge system is architected as a decoupled, multi-tier client-server application optimized for real-time video processing and deep learning inference. The high-level architecture comprises two primary tiers:
-\begin{enumerate}
-    \item \textbf{Presentation Tier (Frontend)}: A single-page web client built with React 19, TypeScript, and Vite that handles user interaction, video file selection, webcam recording via HTML5 media APIs, asynchronous API communication, and dynamic results visualization.
-    \item \textbf{Application and Inference Tier (Backend)}: An asynchronous RESTful microservice built with FastAPI and Uvicorn running on Python 3.11, integrating an OpenCV-powered video decoding pipeline and a singleton multi-model neural inference engine caching trained Keras model weights.
-\end{enumerate}
-
-Figure \ref{fig:overall_arch} illustrates the comprehensive architectural topology of SignBridge, highlighting the separation of concerns between client-side ingestion, HTTP communication boundaries, backend preprocessing, and the in-memory deep learning model registry.
+The SignBridge system is architected as a decoupled, multi-tier client-server application optimized for real-time video processing and deep learning inference. The high-level architecture comprises two primary tiers: (1) a client presentation tier built with React 19, TypeScript, and Vite, and (2) an asynchronous application and inference tier built with FastAPI, Uvicorn, OpenCV, and Keras 3 on Python 3.11. Figure \ref{fig:overall_arch} illustrates the system topology.
 
 \begin{figure}[htbp]
 \centering
 \input{figures/arch_overall.tex}
-\caption{SignBridge end-to-end system architecture, illustrating client presentation, FastAPI REST boundary, OpenCV preprocessing pipeline, and the cached multi-model inference engine.}
+\caption{SignBridge end-to-end system architecture.}
 \label{fig:overall_arch}
 \end{figure}
 
-\section{Frontend Architecture}
-\label{sec:frontend_architecture}
-The frontend architecture is organized around modular React functional components, strictly typed TypeScript models, and centralized API communication services. The directory structure is organized as follows:
+\section{Frontend and Backend Architecture}
+\label{sec:fe_be_arch}
+The frontend is modularized into feature components under \texttt{frontend/src/}:
 \begin{itemize}
-    \item \texttt{src/components/layout/}: Contains foundational structural components, including the \texttt{Navbar} (which displays dynamic backend health badges and active model indicators) and the \texttt{Footer}.
-    \item \texttt{src/components/dashboard/}: Implements the main informational hub, consisting of the \texttt{HeroSection}, the \texttt{ModelCards} component displaying evaluated architectures and benchmark accuracies, the \texttt{PipelineFlow} component, and the \texttt{VocabularyPreview} browser.
-    \item \texttt{src/components/recognition/}: Houses the operational recognition workspace, including \texttt{VideoUploader} (drag-and-drop and file selection), \texttt{WebcamRecorder} (camera stream management, countdown timer, and blob generation), \texttt{VideoPreviewCard} (HTML5 video playback), and \texttt{RecognitionResultCard} (displaying predicted ISL words, confidence meters, latency badges, and top-5 probability rankings).
-    \item \texttt{src/components/comparison/}: Contains the multi-model comparison suite, including \texttt{BenchmarkSummarySection}, \texttt{ModelComparisonCard}, and \texttt{AgreementAnalysisSection} for evaluating consensus and majority agreement across models.
-    \item \texttt{src/services/recognitionApi.ts}: Provides strongly typed asynchronous HTTP client methods (\texttt{analyzeVideo}, \texttt{compareAllModels}, and \texttt{checkBackendHealth}) that communicate with the FastAPI backend.
-    \item \texttt{src/types/index.ts}: Defines formal TypeScript interfaces for model metrics, prediction payloads, top-K candidates, and health responses, ensuring end-to-end type safety.
+    \item \texttt{components/dashboard/}: Hero section, architecture benchmark cards, and vocabulary preview.
+    \item \texttt{components/recognition/}: Video uploader, HTML5 webcam recorder, video preview player, and live recognition result cards.
+    \item \texttt{components/comparison/}: Multi-model comparison suite with agreement matrix.
+    \item \texttt{services/recognitionApi.ts}: Type-safe asynchronous HTTP client methods.
 \end{itemize}
 
-\section{Backend Architecture}
-\label{sec:backend_architecture}
-The backend architecture is structured around FastAPI's asynchronous application lifecycle, implemented across four core Python modules located in \texttt{backend/app/}:
-\begin{enumerate}
-    \item \texttt{config.py}: Defines global application constants, environment variable bindings, allowed video file extensions (\texttt{.mov}, \texttt{.mp4}, \texttt{.avi}, \texttt{.webm}), maximum upload size limits (100\,MB), frame sampling parameters ($N=33$), and the central \texttt{MODEL\_REGISTRY}. The registry defines metadata, target resolutions, normalizations, and filesystem paths for all registered models.
-    \item \texttt{preprocessing.py}: Contains OpenCV video decoding and frame manipulation routines. The core functions \texttt{decode\_video\_frames} and \texttt{preprocess\_for\_model} enforce uniform temporal sampling via \texttt{np.linspace} and apply model-specific resizing and numerical scaling.
-    \item \texttt{inference.py}: Implements the \texttt{MultiModelInferenceEngine} class as a global singleton. It manages the in-memory caching of loaded Keras models, loads the verified 76-class label mapping from JSON, computes normalized probability distributions, extracts top-$K$ candidate rankings, and performs equal-weight late fusion.
-    \item \texttt{main.py}: Defines the FastAPI application instance, lifespan context manager for startup model pre-loading, CORS middleware configurations, and REST endpoint route handlers.
-\end{enumerate}
+The backend organizes application logic across four core modules under \texttt{backend/app/}: \texttt{config.py} (registry and constants), \texttt{preprocessing.py} (OpenCV frame extraction and normalization), \texttt{inference.py} (\texttt{MultiModelInferenceEngine} singleton), and \texttt{main.py} (FastAPI routing and startup lifespan).
 
-\section{Model Inference Workflow}
+\section{Model Inference Workflow and Data Flow}
 \label{sec:inference_workflow}
-The inference workflow translates an incoming raw video stream into a verified lexical sign prediction through five sequential stages, as illustrated in Figure \ref{fig:pipeline_flow}.
+The end-to-end inference workflow translates an incoming video into top-1 and top-5 predictions through five sequential stages, depicted in Figure \ref{fig:pipeline_flow}.
 
 \begin{figure}[htbp]
 \centering
 \input{figures/pipeline_flow.tex}
-\caption{Five-stage inference pipeline flow in SignBridge, detailing ingestion, temporal linspace sampling, spatial standardization, model inference, and consensus output.}
+\caption{Five-stage inference pipeline flow in SignBridge.}
 \label{fig:pipeline_flow}
 \end{figure}
 
-The detailed operational mechanics of each stage are:
-\begin{itemize}
-    \item \textbf{Stage 1 (Video Ingestion)}: The user uploads an RGB video file or captures a clip via webcam. The backend validates the file extension and streams chunks into a named temporary file on disk while enforcing a 100\,MB ceiling.
-    \item \textbf{Stage 2 (Uniform Frame Sampling)}: OpenCV opens the video container via \texttt{cv2.VideoCapture}. If the total frame count $T$ is readable, indices are generated via:
-    \begin{equation}
-        \mathcal{I} = \left\lfloor \text{linspace}(0, T - 1, 33) \right\rfloor \in \mathbb{Z}^{33}
-        \label{eq:linspace}
-    \end{equation}
-    The capture pointer seeks directly to each index $\tau \in \mathcal{I}$, decoding the corresponding frame. If container metadata is missing, sequential decoding with linspace subsampling is executed as a fallback.
-    \item \textbf{Stage 3 (Spatial Preprocessing)}: Each decoded frame is converted from BGR to RGB color-space and resized using \texttt{cv2.INTER\_AREA} interpolation to $224\times224$ (for MobileNetV2 and Custom CNN) or $112\times112$ (for CNN-LSTM). Numerical values are cast to float32 and scaled appropriately.
-    \item \textbf{Stage 4 (Multi-Model Inference)}: The preprocessed tensor is routed to the selected model in the cached inference engine. Frame-level models compute forward passes across all 33 frames, while the recurrent CNN-LSTM evaluates the 5D sequence tensor directly.
-    \item \textbf{Stage 5 (Consensus \& Aggregation)}: For frame-level architectures, the 33 frame probability vectors are averaged. The top predicted class index $\hat{k} = \arg\max_k \bar{p}_k$ is mapped to the corresponding ISL word label, top-5 candidates are extracted, and cross-model agreement metrics are computed.
-\end{itemize}
-
-\section{API Communication and Protocols}
-\label{sec:api_communication}
-Communication between the React client and FastAPI backend occurs over standard HTTP/1.1 protocols using JSON and Multipart Form-Data encodings. Table \ref{tab:api_endpoints_summary} outlines the primary API endpoints exposed by the SignBridge backend.
-
-\begin{table}[htbp]
-\centering
-\caption{SignBridge REST API endpoint specifications.}
-\label{tab:api_endpoints_summary}
-\small
-\begin{tabularx}{\textwidth}{l l p{4.2cm} X}
-\toprule
-\textbf{HTTP Method} & \textbf{Endpoint Path} & \textbf{Request Payload} & \textbf{Response Description} \\
-\midrule
-\texttt{GET} & \texttt{/api/v1/health} & None & Returns service health status, class count (76), default model ID, and load status per registered model. \\
-\addlinespace
-\texttt{GET} & \texttt{/api/v1/model-info} & Optional query: \texttt{?model=<id>} & Returns architecture specifications, input/output tensor shapes, and preprocessing parameters. \\
-\addlinespace
-\texttt{POST} & \texttt{/api/v1/recognize} & \texttt{multipart/form-data}: \texttt{video} (File), \texttt{model} (Form/Query string) & Decodes video, runs inference on specified model, and returns top-1 word, confidence, top-5 candidates, and latency. \\
-\addlinespace
-\texttt{POST} & \texttt{/api/v1/compare} & \texttt{multipart/form-data}: \texttt{video} (File) & Evaluates all three models in parallel on the same clip; returns individual predictions, latencies, and consensus metrics. \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-\section{Data Flow}
-\label{sec:data_flow}
-Data traverses the SignBridge pipeline through tightly defined representations:
 \begin{enumerate}
-    \item \textbf{Binary Video Bitstream}: Raw compressed video packets (\texttt{.MOV}, \texttt{.mp4}, \texttt{.webm}) arrive from the browser and are written to a temporary storage path on the backend host.
-    \item \textbf{Decoded Raw Frame List}: A Python list of 33 NumPy arrays of shape $(H, W, 3)$ with \texttt{uint8} values in $[0, 255]$ in RGB color order.
-    \item \textbf{Preprocessed Model Tensor}:
-    \begin{itemize}
-        \item For MobileNetV2: 4D array of shape $(33, 224, 224, 3)$ of type \texttt{float32} in range $[0, 255]$.
-        \item For Custom CNN: 4D array of shape $(33, 224, 224, 3)$ of type \texttt{float32} in range $[0, 1]$.
-        \item For CNN-LSTM: 5D array of shape $(1, 33, 112, 112, 3)$ of type \texttt{float32} in range $[0, 1]$.
-    \end{itemize}
-    \item \textbf{Logit and Softmax Distributions}: Raw neural output tensors transformed by the terminal Softmax activation into a discrete probability distribution over 76 classes, satisfying $\sum_{k=1}^{76} p_k = 1.0$.
-    \item \textbf{Structured JSON Payload}: Serialized JSON response containing predicted lexical words, floating-point confidence values, top-$K$ candidate arrays, and execution timing metrics.
+    \item \textbf{Ingestion}: Video bytes stream into a temporary disk path while enforcing a 100\,MB size limit.
+    \item \textbf{Uniform Sampling}: Exactly 33 frames are extracted via linear index spacing: $\mathcal{I} = \lfloor \text{linspace}(0, T-1, 33) \rfloor$.
+    \item \textbf{Spatial Preprocessing}: Frames are converted to RGB, resized using \texttt{cv2.INTER\_AREA} ($224^2$ or $112^2$), and normalized.
+    \item \textbf{Neural Inference}: Tensors pass through the requested model in the pre-loaded engine singleton.
+    \item \textbf{Consensus & Aggregation}: Frame probabilities are averaged (or sequence output extracted), mapped to ISL labels, and returned via structured JSON.
 \end{enumerate}
 
-\section{System Workflow}
-\label{sec:system_workflow}
-Figure \ref{fig:workflow_frontend} illustrates the complete user interaction workflow implemented in the frontend application, showing validation checkpoints, mode selection, and error-handling pathways.
-
-\begin{figure}[htbp]
-\centering
-\input{figures/workflow_frontend.tex}
-\caption{SignBridge frontend user interaction and execution workflow, from file selection or webcam capture through client validation, REST dispatch, and results visualization.}
-\label{fig:workflow_frontend}
-\end{figure}
-
-The user may either drag-and-drop an existing sign video clip or record a live clip using their webcam. The client performs instant format and size verification; if valid, the user chooses between single-model recognition or the tri-model comparison suite. Upon receiving the JSON response, the frontend renders interactive confidence meters, candidate lists, and agreement banners.
+\section{API Communication and System Workflow}
+\label{sec:api_comm}
+Communication occurs over HTTP/1.1 via four REST endpoints: \texttt{GET /api/v1/health} (system readiness), \texttt{GET /api/v1/model-info} (tensor shapes and preprocessing parameters), \texttt{POST /api/v1/recognize} (single-model inference), and \texttt{POST /api/v1/compare} (parallel multi-model inference). The user initiates analysis by uploading a file or recording via webcam; the client performs client-side validation, dispatches the request, and displays the top predicted word, candidate probabilities, and consensus agreement.

@@ -1,51 +1,46 @@
 \begin{tikzpicture}[
-    node distance=0.8cm and 1.2cm,
+    scale=0.85, transform shape,
+    node distance=0.6cm and 1.0cm,
     font=\small\sffamily,
-    action/.style={draw=blue!70!black, fill=blue!5, rounded corners=3pt, align=center, inner sep=5pt, text width=3.8cm, line width=0.8pt},
-    decision/.style={draw=orange!80!black, fill=orange!8, diamond, aspect=1.8, align=center, inner sep=2pt, font=\footnotesize\sffamily, line width=0.8pt},
-    service/.style={draw=teal!70!black, fill=teal!8, rounded corners=3pt, align=center, inner sep=5pt, text width=3.8cm, line width=0.8pt},
-    ui/.style={draw=purple!70!black, fill=purple!6, rounded corners=3pt, align=center, inner sep=5pt, text width=3.8cm, line width=0.8pt},
-    arrow/.style={->, >=stealth, line width=1pt, draw=gray!70!black}
+    action/.style={draw=blue!70!black, fill=blue!5, rounded corners=3pt, align=center, inner sep=4pt, text width=3.6cm, line width=0.8pt},
+    decision/.style={draw=orange!80!black, fill=orange!8, diamond, aspect=1.8, align=center, inner sep=2pt, font=\scriptsize\sffamily, line width=0.8pt},
+    service/.style={draw=teal!70!black, fill=teal!8, rounded corners=3pt, align=center, inner sep=4pt, text width=3.6cm, line width=0.8pt},
+    ui/.style={draw=purple!70!black, fill=purple!6, rounded corners=3pt, align=center, inner sep=4pt, text width=3.6cm, line width=0.8pt},
+    arrow/.style={->, >=stealth, line width=0.9pt, draw=gray!70!black}
 ]
 
 \node[action] (input) {
     \textbf{User Interaction}\\
-    Upload Video Clip (.mov, .mp4)\\
-    \textit{or} Record Live Webcam Clip
+    \scriptsize Video Upload (.mov, .mp4) or Live Webcam
 };
 
-\node[decision, below=0.6cm of input] (val) {
-    File Valid?\\
+\node[decision, below=0.5cm of input] (val) {
+    Valid File?\\
     $\le 100$ MB?
 };
 
-\node[action, right=1.2cm of val, text width=2.6cm, draw=red!70!black, fill=red!6] (err) {
-    \footnotesize Display Toast / Banner Error
+\node[action, right=1.0cm of val, text width=2.4cm, draw=red!70!black, fill=red!6] (err) {
+    \scriptsize Display Toast / Error Banner
 };
 
-\node[action, below=0.7cm of val] (mode) {
+\node[action, below=0.5cm of val] (mode) {
     \textbf{Select Operation}\\
-    $\bullet$ Single Model Recognition\\
-    $\bullet$ Multi-Model Comparison
+    \scriptsize Single-Model or Tri-Model Comparison
 };
 
-\node[service, below=0.7cm of mode] (api) {
+\node[service, below=0.5cm of mode] (api) {
     \textbf{FastAPI REST Request}\\
-    \texttt{POST /api/v1/recognize}\\
-    \textit{or} \texttt{POST /api/v1/compare}
+    \scriptsize \texttt{POST /recognize} or \texttt{POST /compare}
 };
 
-\node[ui, below=0.7cm of api] (result) {
+\node[ui, below=0.5cm of api] (result) {
     \textbf{Interactive Results View}\\
-    $\bullet$ Primary Recognized ISL Word\\
-    $\bullet$ Top-5 Confidence Distribution\\
-    $\bullet$ Measured Latency (ms)\\
-    $\bullet$ Cross-Model Consensus
+    \scriptsize Top-1 Word, Top-5 Rankings, Latency, Consensus
 };
 
 \draw[arrow] (input) -- (val);
-\draw[arrow] (val) -- node[above, font=\footnotesize] {No} (err);
-\draw[arrow] (val) -- node[right, font=\footnotesize] {Yes} (mode);
+\draw[arrow] (val) -- node[above, font=\scriptsize] {No} (err);
+\draw[arrow] (val) -- node[right, font=\scriptsize] {Yes} (mode);
 \draw[arrow] (mode) -- (api);
 \draw[arrow] (api) -- (result);
 
